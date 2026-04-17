@@ -201,20 +201,20 @@ free). This is a one-time manual step documented in README.
 
 ### Task 8: Create the Claude Code skill
 
-- [ ] create `skill/SKILL.md` in the repo with frontmatter
+- [x] create `skill/SKILL.md` in the repo with frontmatter
   (`name: telegram`, `description: ...`) instructing Claude when to use
   the tool (search user's Telegram groups, generate digests) and
   documenting each command's JSON output shape with example calls
-- [ ] document in `SKILL.md`: one-time setup (api_id/api_hash,
+- [x] document in `SKILL.md`: one-time setup (api_id/api_hash,
   `tg login`), common workflows (daily digest: `tg groups` →
   `tg messages <group> --since 24h`), and that the skill is the source
   of truth for command names (not Claude's memory)
-- [ ] create `scripts/install-skill.sh` that symlinks `skill/` to
+- [x] create `scripts/install-skill.sh` that symlinks `skill/` to
   `~/.claude/skills/telegram/` (idempotent; checks for existing link)
-- [ ] write tests for `install-skill.sh` using a temp HOME (shellcheck
+- [x] write tests for `install-skill.sh` using a temp HOME (shellcheck
   clean; verify symlink created, re-runs noop, errors if target is a
   non-symlink file)
-- [ ] run `pytest` and `shellcheck scripts/install-skill.sh` — must
+- [x] run `pytest` and `shellcheck scripts/install-skill.sh` — must
   pass before task 9
 
 ### Task 9: Verify acceptance criteria
