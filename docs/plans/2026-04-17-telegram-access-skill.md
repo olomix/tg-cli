@@ -232,14 +232,15 @@ free). This is a one-time manual step documented in README.
 
 ### Task 10: [Final] Documentation
 
-- [ ] write `README.md` covering: what the tool does, install steps
+- [x] write `README.md` covering: what the tool does, install steps
   (`uv tool install .`), obtaining `api_id`/`api_hash` from
   my.telegram.org, `tg login`, each command with examples, skill
   installation via `scripts/install-skill.sh`, troubleshooting section
   (flood wait, re-login, session corruption)
-- [ ] add short `skill/SKILL.md` cross-reference to README
-- [ ] update any project knowledge docs in `docs/` if new patterns
-  discovered during implementation
+- [x] add short `skill/SKILL.md` cross-reference to README
+- [x] update any project knowledge docs in `docs/` if new patterns
+  discovered during implementation (no new patterns beyond what the
+  plan already documents; `docs/` holds this plan only)
 
 *Note: ralphex automatically moves completed plans to
 `docs/plans/completed/`*
