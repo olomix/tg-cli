@@ -8,10 +8,9 @@ import json
 import click
 
 from ..client import make_client
-from ..config import ConfigError
+from ..errors import AuthError, handle_errors
 from ..models import Message
-from ._resolve import GroupResolveError, resolve
-from ._time import TimeParseError
+from ._resolve import resolve
 from ._time import parse as parse_time
 from .messages import _to_message
 
@@ -38,19 +37,12 @@ from .messages import _to_message
     is_flag=True,
     help="Indent JSON output for human reading.",
 )
+@handle_errors
 def search(
     group: str, query: str, since: str | None, limit: int, pretty: bool
 ) -> None:
     """Full-text search QUERY within GROUP, newest first, as JSON."""
-    try:
-        result = asyncio.run(_run_search(group, query, since, limit))
-    except ConfigError as e:
-        raise click.ClickException(str(e)) from e
-    except TimeParseError as e:
-        raise click.ClickException(str(e)) from e
-    except GroupResolveError as e:
-        raise click.ClickException(str(e)) from e
-
+    result = asyncio.run(_run_search(group, query, since, limit))
     payload = [m.to_dict() for m in result]
     click.echo(json.dumps(payload, indent=2 if pretty else None))
 
@@ -63,9 +55,7 @@ async def _run_search(
     await client.connect()
     try:
         if not await client.is_user_authorized():
-            raise click.ClickException(
-                "Not logged in. Run `tg login` first."
-            )
+            raise AuthError()
         entity = await resolve(client, group)
         group_id = int(getattr(entity, "id", 0))
         collected: list[Message] = []

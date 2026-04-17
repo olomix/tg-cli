@@ -8,9 +8,9 @@ import json
 import click
 
 from ..client import make_client
-from ..config import ConfigError
+from ..errors import AuthError, MessageNotFoundError, handle_errors
 from ..models import Message
-from ._resolve import GroupResolveError, resolve
+from ._resolve import resolve
 from .messages import _to_message
 
 
@@ -29,17 +29,12 @@ from .messages import _to_message
     is_flag=True,
     help="Indent JSON output for human reading.",
 )
+@handle_errors
 def thread(
     group: str, message_id: int, limit: int, pretty: bool
 ) -> None:
     """Fetch MESSAGE_ID and its replies from GROUP, root first, as JSON."""
-    try:
-        result = asyncio.run(_collect_thread(group, message_id, limit))
-    except ConfigError as e:
-        raise click.ClickException(str(e)) from e
-    except GroupResolveError as e:
-        raise click.ClickException(str(e)) from e
-
+    result = asyncio.run(_collect_thread(group, message_id, limit))
     payload = [m.to_dict() for m in result]
     click.echo(json.dumps(payload, indent=2 if pretty else None))
 
@@ -51,15 +46,13 @@ async def _collect_thread(
     await client.connect()
     try:
         if not await client.is_user_authorized():
-            raise click.ClickException(
-                "Not logged in. Run `tg login` first."
-            )
+            raise AuthError()
         entity = await resolve(client, group)
         group_id = int(getattr(entity, "id", 0))
 
         root_raw = await client.get_messages(entity, ids=message_id)
         if root_raw is None:
-            raise click.ClickException(
+            raise MessageNotFoundError(
                 f"message {message_id} not found in {group!r}"
             )
 

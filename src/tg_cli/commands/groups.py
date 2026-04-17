@@ -9,7 +9,7 @@ from typing import Any
 import click
 
 from ..client import make_client
-from ..config import ConfigError
+from ..errors import AuthError, handle_errors
 from ..models import Group
 
 _TYPE_CHOICES = ("group", "channel", "all")
@@ -35,13 +35,10 @@ _TYPE_CHOICES = ("group", "channel", "all")
     is_flag=True,
     help="Indent JSON output for human reading.",
 )
+@handle_errors
 def groups(type_filter: str, limit: int | None, pretty: bool) -> None:
     """List your Telegram groups and channels as JSON."""
-    try:
-        result = asyncio.run(_collect_groups(type_filter, limit))
-    except ConfigError as e:
-        raise click.ClickException(str(e)) from e
-
+    result = asyncio.run(_collect_groups(type_filter, limit))
     payload = [g.to_dict() for g in result]
     click.echo(json.dumps(payload, indent=2 if pretty else None))
 
@@ -53,9 +50,7 @@ async def _collect_groups(
     await client.connect()
     try:
         if not await client.is_user_authorized():
-            raise click.ClickException(
-                "Not logged in. Run `tg login` first."
-            )
+            raise AuthError()
         collected: list[Group] = []
         async for dialog in client.iter_dialogs():
             group = _dialog_to_group(dialog)

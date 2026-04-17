@@ -188,16 +188,16 @@ free). This is a one-time manual step documented in README.
 
 ### Task 7: Error handling and UX polish
 
-- [ ] standardise error output: all errors print
+- [x] standardise error output: all errors print
   `{"error": "...", "type": "..."}` to stderr, exit non-zero
-- [ ] handle Telethon `FloodWaitError` with clear message (`retry
+- [x] handle Telethon `FloodWaitError` with clear message (`retry
   after N seconds`)
-- [ ] handle `SessionPasswordNeededError` (2FA) in login only; other
+- [x] handle `SessionPasswordNeededError` (2FA) in login only; other
   commands should instruct user to run `tg login`
-- [ ] add `--json-errors` / default behaviour so Claude can parse
+- [x] add `--json-errors` / default behaviour so Claude can parse
   failures programmatically
-- [ ] write tests for error output shape across all commands (parametrised)
-- [ ] run `pytest` — must pass before task 8
+- [x] write tests for error output shape across all commands (parametrised)
+- [x] run `pytest` — must pass before task 8
 
 ### Task 8: Create the Claude Code skill
 

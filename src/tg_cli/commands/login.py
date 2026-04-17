@@ -8,7 +8,7 @@ import click
 from telethon.errors import SessionPasswordNeededError
 
 from ..client import make_client
-from ..config import ConfigError
+from ..errors import handle_errors
 
 
 @click.command()
@@ -17,12 +17,10 @@ from ..config import ConfigError
     default=None,
     help="Phone number in +country format; prompted for when omitted.",
 )
+@handle_errors
 def login(phone: str | None) -> None:
     """Authenticate with Telegram and persist the session file."""
-    try:
-        asyncio.run(_run_login(phone))
-    except ConfigError as e:
-        raise click.ClickException(str(e)) from e
+    asyncio.run(_run_login(phone))
 
 
 async def _run_login(phone: str | None) -> None:
