@@ -94,16 +94,16 @@ free). This is a one-time manual step documented in README.
 
 ### Task 1: Bootstrap project structure
 
-- [ ] create `pyproject.toml` with project name `tg-cli`, entry point
+- [x] create `pyproject.toml` with project name `tg-cli`, entry point
   `tg = "tg_cli.cli:main"`, deps: `telethon`, `click`, `python-dateutil`
-- [ ] create `src/tg_cli/` package layout (`__init__.py`, `__main__.py`,
+- [x] create `src/tg_cli/` package layout (`__init__.py`, `__main__.py`,
   `cli.py`, `config.py`, `client.py`, `models.py`, `commands/__init__.py`)
-- [ ] add `README.md` stub (full content written in final task)
-- [ ] add `.gitignore` (Python defaults + `*.session`, `*.session-journal`,
+- [x] add `README.md` stub (full content written in final task)
+- [x] add `.gitignore` (Python defaults + `*.session`, `*.session-journal`,
   `.venv/`)
-- [ ] initialise git repo, first commit
-- [ ] create `tests/` with `conftest.py` and empty `__init__.py`
-- [ ] write a trivial test (`test_cli.py::test_entry_point_exists`) and
+- [x] initialise git repo, first commit
+- [x] create `tests/` with `conftest.py` and empty `__init__.py`
+- [x] write a trivial test (`test_cli.py::test_entry_point_exists`) and
   run `uv run pytest` — must pass before task 2
 
 ### Task 2: Config loader and login command
