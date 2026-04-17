@@ -219,16 +219,16 @@ free). This is a one-time manual step documented in README.
 
 ### Task 9: Verify acceptance criteria
 
-- [ ] verify all commands from Overview are implemented: `groups`,
+- [x] verify all commands from Overview are implemented: `groups`,
   `messages`, `search`, `thread`, `login`
-- [ ] verify JSON output is parseable (feed every command output
+- [x] verify JSON output is parseable (feed every command output
   through `json.loads` in a test)
-- [ ] verify `--pretty` works on every output command
-- [ ] run full test suite (`uv run pytest -v`) — 100% pass
-- [ ] run linter (`uv run ruff check src/ tests/`) — zero issues
-- [ ] verify test coverage with `uv run pytest --cov=tg_cli` — target
-  ≥80% on `src/tg_cli/`
-- [ ] verify `shellcheck scripts/install-skill.sh` — clean
+- [x] verify `--pretty` works on every output command
+- [x] run full test suite (`uv run pytest -v`) — 100% pass
+- [x] run linter (`uv run ruff check src/ tests/`) — zero issues
+- [x] verify test coverage with `uv run pytest --cov=tg_cli` — target
+  ≥80% on `src/tg_cli/` (achieved 98%)
+- [x] verify `shellcheck scripts/install-skill.sh` — clean
 
 ### Task 10: [Final] Documentation
 
