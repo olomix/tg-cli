@@ -53,7 +53,7 @@ def _run(coro: Any) -> Any:
 
 
 def test_resolve_numeric_id_passes_int_to_get_entity() -> None:
-    sentinel = SimpleNamespace(name="entity")
+    sentinel = SimpleNamespace(title="My Group")
     client = _client(get_entity=sentinel)
     result = _run(_resolve.resolve(client, "-1001234567890"))
     assert result is sentinel
@@ -62,14 +62,14 @@ def test_resolve_numeric_id_passes_int_to_get_entity() -> None:
 
 
 def test_resolve_positive_numeric_id() -> None:
-    sentinel = SimpleNamespace()
+    sentinel = SimpleNamespace(title="My Group")
     client = _client(get_entity=sentinel)
     _run(_resolve.resolve(client, "12345"))
     client.get_entity.assert_awaited_once_with(12345)
 
 
 def test_resolve_at_username_passes_string_to_get_entity() -> None:
-    sentinel = SimpleNamespace()
+    sentinel = SimpleNamespace(title="My Dev Group")
     client = _client(get_entity=sentinel)
     _run(_resolve.resolve(client, "@mydevgroup"))
     client.get_entity.assert_awaited_once_with("@mydevgroup")
@@ -125,12 +125,44 @@ def test_resolve_rejects_empty_reference() -> None:
         _run(_resolve.resolve(client, ""))
 
 
-def test_resolve_dialog_without_title_falls_back_to_name() -> None:
-    entity = SimpleNamespace(id=10)  # no title attr
-    dialog = SimpleNamespace(entity=entity, id=10, name="Fallback")
-    client = _client([dialog])
-    result = _run(_resolve.resolve(client, "fallback"))
-    assert result is entity
+def test_resolve_title_substring_skips_dialogs_without_entity_title() -> None:
+    # Telethon ``User`` dialogs (DMs, bots) have no ``title`` but do
+    # populate ``dialog.name`` with the contact's name — must NOT match
+    # the title-substring path or the skill's group-only contract leaks.
+    dm = SimpleNamespace(
+        entity=SimpleNamespace(id=10, first_name="Alice"),
+        id=10,
+        name="Alice",
+    )
+    client = _client([dm])
+    with pytest.raises(_resolve.GroupNotFoundError):
+        _run(_resolve.resolve(client, "alice"))
+
+
+def test_resolve_numeric_id_rejects_user_entity() -> None:
+    # A positive numeric id can resolve to a ``User`` (DM, bot). Passing
+    # one to ``tg messages`` would otherwise return DM history under the
+    # guise of a group fetch.
+    user_entity = SimpleNamespace(id=12345, first_name="Alice")
+    client = _client(get_entity=user_entity)
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "12345"))
+    assert "12345" in str(excinfo.value)
+
+
+def test_resolve_at_username_rejects_user_entity() -> None:
+    user_entity = SimpleNamespace(id=42, first_name="Alice", username="alice")
+    client = _client(get_entity=user_entity)
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "@alice"))
+    assert "@alice" in str(excinfo.value)
+
+
+def test_resolve_numeric_id_accepts_chat_entity() -> None:
+    chat_entity = SimpleNamespace(id=-1001234567890, title="My Group")
+    client = _client(get_entity=chat_entity)
+    result = _run(_resolve.resolve(client, "-1001234567890"))
+    assert result is chat_entity
 
 
 def test_resolve_numeric_id_value_error_becomes_group_not_found() -> None:

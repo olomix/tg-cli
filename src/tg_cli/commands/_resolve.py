@@ -46,6 +46,11 @@ async def resolve(client: Any, reference: str) -> Any:
     Numeric ids and ``@usernames`` are resolved via
     ``client.get_entity`` so we don't pay an ``iter_dialogs`` walk for
     the precise cases. Title substrings require iterating dialogs.
+
+    The result is always a group/chat/channel entity. ``User`` entities
+    (DMs, bots) — even when an id or ``@handle`` resolves to one — are
+    rejected as ``GroupNotFoundError`` so the skill contract that ``tg``
+    operates on groups is preserved.
     """
     if not isinstance(reference, str) or not reference.strip():
         raise GroupResolveError("group reference must be a non-empty string")
@@ -69,11 +74,27 @@ async def _get_entity_or_not_found(
     client: Any, key: Any, reference: str
 ) -> Any:
     try:
-        return await client.get_entity(key)
+        entity = await client.get_entity(key)
     except _ENTITY_LOOKUP_ERRORS as exc:
         raise GroupNotFoundError(
             f"no group matched {reference!r}"
         ) from exc
+    if not _is_group_entity(entity):
+        raise GroupNotFoundError(
+            f"no group matched {reference!r} (resolved to a non-group "
+            "entity such as a DM or bot)"
+        )
+    return entity
+
+
+def _is_group_entity(entity: Any) -> bool:
+    """Return ``True`` for ``Chat``/``Channel`` entities.
+
+    Telethon ``User`` objects (DMs, bots) lack a ``title`` attribute.
+    We mirror the same shape-test ``commands.groups`` uses to filter
+    DMs out of dialog listings, keeping resolver and lister consistent.
+    """
+    return bool(getattr(entity, "title", None))
 
 
 _ENTITY_LOOKUP_ERRORS = (
@@ -109,9 +130,13 @@ async def _resolve_by_title(client: Any, query: str) -> Any:
 
 
 def _dialog_title(dialog: Any) -> str | None:
+    """Return the title of a group/chat/channel dialog or ``None``.
+
+    Deliberately does **not** fall back to ``dialog.name`` — that field
+    is populated for ``User`` (DM/bot) dialogs too, which would let the
+    title-substring path silently match a DM and violate the skill
+    contract that ``<group>`` references a group.
+    """
     entity = getattr(dialog, "entity", None)
     title = getattr(entity, "title", None)
-    if title:
-        return str(title)
-    name = getattr(dialog, "name", None)
-    return str(name) if name else None
+    return str(title) if title else None

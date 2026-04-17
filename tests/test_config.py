@@ -105,3 +105,12 @@ def test_get_config_dir_env_expands_tilde(
 ) -> None:
     monkeypatch.setenv(cfg_mod.ENV_CONFIG_DIR, "~/custom-tg")
     assert cfg_mod.get_config_dir() == Path.home() / "custom-tg"
+
+
+def test_load_config_tightens_file_perms(tmp_path: Path) -> None:
+    """``api_hash`` is a long-lived secret; load must chmod 0o600."""
+    path = tmp_path / "config.toml"
+    _write(path, 'api_id = 1\napi_hash = "secret"\n')
+    path.chmod(0o644)
+    load_config(tmp_path)
+    assert path.stat().st_mode & 0o777 == 0o600

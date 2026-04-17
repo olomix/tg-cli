@@ -83,6 +83,15 @@ def load_config(config_dir: Path | None = None) -> Config:
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"Malformed TOML in {path}: {e}") from e
 
+    # The config file holds ``api_hash`` — a long-lived Telegram secret.
+    # Tighten perms to 0o600 best-effort each load so a stale 0o644 from
+    # the user's umask cannot leak it on a shared machine. Mirrors the
+    # post-login session chmod in ``commands/login.py``.
+    try:
+        path.chmod(0o600)
+    except (OSError, NotImplementedError):
+        pass
+
     if "api_id" not in data:
         raise ConfigError(
             f"Missing 'api_id' in {path}. "
