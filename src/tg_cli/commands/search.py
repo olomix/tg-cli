@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 
 import click
 
@@ -59,21 +60,27 @@ async def _run_search(
         entity = await resolve(client, group)
         group_id = int(getattr(entity, "id", 0))
         collected: list[Message] = []
-        # Telethon's ``offset_date`` means "messages older than X" in the
-        # default (newest-first) direction; we need "newer than X". Pass
-        # ``reverse=True`` to flip that semantic, collect oldest→newest,
-        # then reverse the list so callers still see newest matches first.
-        reverse = offset_date is not None
+        # Iterate newest-first so ``--limit`` caps to the most recent
+        # matches (not the earliest). With ``--since``, stop when a
+        # match predates the cutoff; search output stays newest-first.
         async for raw in client.iter_messages(
             entity,
             limit=limit,
-            offset_date=offset_date,
             search=query,
-            reverse=reverse,
         ):
+            if offset_date is not None and _is_older_than(raw, offset_date):
+                break
             collected.append(to_message(raw, group_id))
-        if reverse:
-            collected.reverse()
         return collected
     finally:
         await client.disconnect()
+
+
+def _is_older_than(raw: object, cutoff: datetime) -> bool:
+    """Return ``True`` when ``raw.date`` is strictly older than ``cutoff``."""
+    raw_date = getattr(raw, "date", None)
+    if raw_date is None:
+        return False
+    if raw_date.tzinfo is None:
+        raw_date = raw_date.replace(tzinfo=timezone.utc)
+    return raw_date < cutoff

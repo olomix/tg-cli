@@ -5,7 +5,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from click.testing import CliRunner
-from telethon.errors import SessionPasswordNeededError
+from telethon.errors import (
+    PasswordHashInvalidError,
+    PhoneCodeInvalidError,
+    SessionPasswordNeededError,
+)
 
 from tg_cli import cli
 from tg_cli.config import ConfigError
@@ -114,4 +118,45 @@ def test_login_disconnects_even_on_error() -> None:
             input="98765\n",
         )
     assert result.exit_code != 0
+    client.disconnect.assert_awaited_once()
+
+
+def test_login_invalid_code_emits_json_error() -> None:
+    """Wrong login code must emit a structured JSON error, not leak a
+    traceback — Claude relies on the error contract for login failures."""
+    client = _fake_client()
+    client.sign_in = AsyncMock(side_effect=PhoneCodeInvalidError(request=None))
+    with patch("tg_cli.commands.login.make_client", return_value=client):
+        result = CliRunner().invoke(
+            cli.main,
+            ["login", "--phone", "+15551234567"],
+            input="00000\n",
+        )
+    assert result.exit_code != 0
+    assert '"type": "AuthError"' in result.stderr
+    assert "login code" in result.stderr.lower()
+    client.disconnect.assert_awaited_once()
+
+
+def test_login_invalid_2fa_password_emits_json_error() -> None:
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.disconnect = AsyncMock()
+    client.is_user_authorized = AsyncMock(return_value=False)
+    client.send_code_request = AsyncMock()
+    client.sign_in = AsyncMock(
+        side_effect=[
+            SessionPasswordNeededError(request=None),
+            PasswordHashInvalidError(request=None),
+        ]
+    )
+    with patch("tg_cli.commands.login.make_client", return_value=client):
+        result = CliRunner().invoke(
+            cli.main,
+            ["login", "--phone", "+15551234567"],
+            input="98765\nwrongpw\n",
+        )
+    assert result.exit_code != 0
+    assert '"type": "AuthError"' in result.stderr
+    assert "2fa" in result.stderr.lower()
     client.disconnect.assert_awaited_once()

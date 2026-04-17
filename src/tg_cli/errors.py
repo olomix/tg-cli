@@ -17,7 +17,13 @@ from functools import wraps
 from typing import Any
 
 import click
-from telethon.errors import FloodWaitError, SessionPasswordNeededError
+from telethon.errors import (
+    FloodWaitError,
+    PasswordHashInvalidError,
+    PhoneCodeInvalidError,
+    RPCError,
+    SessionPasswordNeededError,
+)
 
 from .commands._resolve import GroupResolveError
 from .commands._time import TimeParseError
@@ -66,6 +72,25 @@ def _classify(exc: BaseException) -> tuple[str, str] | None:
         return (
             "Session requires 2FA re-authentication; run `tg login`.",
             "AuthError",
+        )
+    if isinstance(exc, PhoneCodeInvalidError):
+        return (
+            "Invalid login code; run `tg login` and try again.",
+            "AuthError",
+        )
+    if isinstance(exc, PasswordHashInvalidError):
+        return (
+            "Invalid 2FA password; run `tg login` and try again.",
+            "AuthError",
+        )
+    # Catch-all for any other Telethon RPC error so a transport or
+    # server-side failure surfaces as structured JSON rather than a
+    # bare traceback. Must stay last — the specific branches above
+    # carry more informative messages.
+    if isinstance(exc, RPCError):
+        return (
+            str(exc) or "Telegram RPC error; try again later.",
+            "TelegramError",
         )
     return None
 

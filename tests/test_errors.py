@@ -15,7 +15,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
-from telethon.errors import FloodWaitError, SessionPasswordNeededError
+from telethon.errors import (
+    FloodWaitError,
+    PasswordHashInvalidError,
+    PhoneCodeInvalidError,
+    RPCError,
+    SessionPasswordNeededError,
+)
 
 from tg_cli import cli
 from tg_cli.commands._resolve import (
@@ -87,6 +93,26 @@ def test_classify_maps_known_exception_types() -> None:
     msg, typ = _classify(sess)
     assert typ == "AuthError"
     assert "tg login" in msg
+    # Invalid code / 2FA password from interactive ``tg login`` flow.
+    msg, typ = _classify(PhoneCodeInvalidError(request=None))
+    assert typ == "AuthError"
+    assert "login code" in msg.lower()
+    msg, typ = _classify(PasswordHashInvalidError(request=None))
+    assert typ == "AuthError"
+    assert "2fa" in msg.lower()
+
+
+def test_classify_wraps_generic_rpc_error_as_telegram_error() -> None:
+    """Any unmapped Telethon ``RPCError`` must surface as structured
+    JSON rather than a raw traceback."""
+
+    class _SomeRPCError(RPCError):
+        def __init__(self) -> None:
+            super().__init__(request=None, message="something went wrong")
+
+    msg, typ = _classify(_SomeRPCError())
+    assert typ == "TelegramError"
+    assert msg
 
 
 def test_handle_errors_passes_through_unknown_exceptions() -> None:

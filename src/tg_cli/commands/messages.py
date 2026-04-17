@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 
 import click
 
@@ -58,23 +59,30 @@ async def _collect_messages(
         entity = await resolve(client, group)
         group_id = int(getattr(entity, "id", 0))
         collected: list[Message] = []
-        if offset_date is not None:
-            # ``reverse=True`` + ``offset_date`` yields oldest→newest from
-            # ``offset_date`` onward, which matches the documented order.
-            async for raw in client.iter_messages(
-                entity,
-                limit=limit,
-                offset_date=offset_date,
-                reverse=True,
-            ):
-                collected.append(to_message(raw, group_id))
-        else:
-            # Without a cutoff, ``reverse=True`` would start at the very
-            # beginning of the chat. Fetch newest→oldest, then reverse to
-            # keep the documented oldest-first output.
-            async for raw in client.iter_messages(entity, limit=limit):
-                collected.append(to_message(raw, group_id))
-            collected.reverse()
+        # Iterate newest-first so ``--limit`` caps to the most recent
+        # messages (not the earliest ones). With ``--since``, stop once
+        # we cross the cutoff; the list is then reversed for the
+        # documented oldest-first output.
+        async for raw in client.iter_messages(entity, limit=limit):
+            if offset_date is not None and _is_older_than(raw, offset_date):
+                break
+            collected.append(to_message(raw, group_id))
+        collected.reverse()
         return collected
     finally:
         await client.disconnect()
+
+
+def _is_older_than(raw: object, cutoff: datetime) -> bool:
+    """Return ``True`` when ``raw.date`` is strictly older than ``cutoff``.
+
+    Telethon dates are normally tz-aware UTC, but service messages and
+    some edge-case payloads can carry naive datetimes; treat those as
+    UTC to match the rest of the pipeline.
+    """
+    raw_date = getattr(raw, "date", None)
+    if raw_date is None:
+        return False
+    if raw_date.tzinfo is None:
+        raw_date = raw_date.replace(tzinfo=timezone.utc)
+    return raw_date < cutoff

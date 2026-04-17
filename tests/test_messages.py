@@ -178,17 +178,84 @@ def test_messages_default_limit_is_100() -> None:
     assert kwargs["limit"] == 100
 
 
-def test_messages_since_passed_through_as_utc_datetime_with_reverse() -> None:
+def test_messages_since_iterates_newest_first_and_filters_client_side() -> (
+    None
+):
+    """``--since`` must cap to the newest messages within the window,
+    not the earliest. We iterate newest-first with no ``offset_date``/
+    ``reverse``, then break on the cutoff ourselves."""
     entity = _entity(1)
     client = _fake_client(entity=entity, history=[])
     result = _invoke(client, "1", "--since", "2026-04-15T10:00")
     assert result.exit_code == 0, result.output
     _, kwargs = client.iter_messages.call_args
-    assert kwargs["offset_date"] == datetime(
-        2026, 4, 15, 10, 0, tzinfo=timezone.utc
+    assert kwargs.get("offset_date") is None
+    assert kwargs.get("reverse") is not True
+
+
+def test_messages_since_returns_newest_messages_when_limit_exceeded() -> None:
+    """Before the fix, Telethon's ``reverse=True`` + ``offset_date`` +
+    ``limit`` returned the OLDEST N messages after the cutoff, silently
+    dropping the most recent activity. Regression test: the command
+    must iterate newest-first with ``limit`` passed through, so
+    Telethon yields the newest N that Claude actually wants."""
+    entity = _entity(1)
+    # Simulate Telethon respecting ``limit=2`` with newest-first
+    # iteration: only the 2 newest messages reach the CLI.
+    history = [
+        _msg(
+            id=5,
+            text="newest",
+            date=datetime(2026, 4, 17, 14, 0, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=4,
+            text="second-newest",
+            date=datetime(2026, 4, 17, 13, 0, tzinfo=timezone.utc),
+        ),
+    ]
+    client = _fake_client(entity=entity, history=history)
+    result = _invoke(
+        client, "1", "--since", "2026-04-17T09:00", "--limit", "2"
     )
-    # ``reverse=True`` is required so ``offset_date`` means "newer than".
-    assert kwargs["reverse"] is True
+    assert result.exit_code == 0, result.output
+    _, kwargs = client.iter_messages.call_args
+    # Key regression assertion: ``limit`` is passed to Telethon directly
+    # and no ``offset_date``/``reverse`` is used (those would flip the
+    # semantic to "oldest N after cutoff").
+    assert kwargs["limit"] == 2
+    assert kwargs.get("offset_date") is None
+    assert kwargs.get("reverse") is not True
+    # Output is oldest-first per documented contract.
+    data = json.loads(result.stdout)
+    assert [m["id"] for m in data] == [4, 5]
+
+
+def test_messages_since_stops_iterating_at_cutoff() -> None:
+    """Messages older than ``--since`` must be dropped client-side."""
+    entity = _entity(1)
+    history = [
+        _msg(
+            id=3,
+            text="in window",
+            date=datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=2,
+            text="in window",
+            date=datetime(2026, 4, 17, 11, 0, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=1,
+            text="too old",
+            date=datetime(2026, 4, 17, 9, 0, tzinfo=timezone.utc),
+        ),
+    ]
+    client = _fake_client(entity=entity, history=history)
+    result = _invoke(client, "1", "--since", "2026-04-17T10:00")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert [m["id"] for m in data] == [2, 3]
 
 
 def test_messages_without_since_reverses_list_for_oldest_first() -> None:
@@ -408,3 +475,46 @@ def test_to_message_helper_handles_missing_attributes() -> None:
     assert msg.sender_name is None
     assert msg.reply_to_id is None
     assert msg.group_id == 42
+
+
+def test_to_message_handles_non_integer_sender_id() -> None:
+    """Telethon can set ``sender_id`` to a ``Peer*`` object for
+    anonymous-admin or channel-signature messages; ``int(peer)`` raises
+    ``TypeError``. The helper must degrade to ``None`` rather than
+    propagating a traceback."""
+
+    class _Peer:
+        def __int__(self) -> int:
+            raise TypeError("Peer is not int-castable")
+
+    raw = SimpleNamespace(
+        id=1,
+        message="anon",
+        text=None,
+        date=datetime(2026, 4, 17, tzinfo=timezone.utc),
+        sender=None,
+        sender_id=_Peer(),
+        reply_to=None,
+    )
+    msg = message_mod.to_message(raw, group_id=42)
+    assert msg.sender_id is None
+    assert msg.to_dict()["sender_id"] is None
+
+
+def test_to_message_handles_missing_date_without_crashing() -> None:
+    """Some Telethon payloads (service messages) can carry ``date=None``.
+    ``Message.to_dict()`` must not crash when serialising the batch."""
+    raw = SimpleNamespace(
+        id=1,
+        message="service",
+        text=None,
+        date=None,
+        sender=None,
+        sender_id=None,
+        reply_to=None,
+    )
+    msg = message_mod.to_message(raw, group_id=42)
+    # ``to_dict`` must not crash.
+    serialised = msg.to_dict()
+    assert serialised["id"] == 1
+    assert isinstance(serialised["date"], str)

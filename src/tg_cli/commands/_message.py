@@ -6,21 +6,35 @@ output shape is identical regardless of how the message was fetched.
 
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from ..models import Message
 
 
 def to_message(raw: Any, group_id: int) -> Message:
-    """Build a :class:`Message` from a Telethon ``Message`` object."""
+    """Build a :class:`Message` from a Telethon ``Message`` object.
+
+    Service messages and anonymous-admin edge cases can produce missing
+    or non-integer attributes (e.g. ``sender_id`` set to a ``PeerChannel``
+    object, or ``date`` unset). Fall back to safe defaults so the JSON
+    error contract holds instead of crashing mid-batch.
+    """
     sender = getattr(raw, "sender", None)
-    sender_id = getattr(raw, "sender_id", None)
-    if sender_id is not None:
-        sender_id = int(sender_id)
+    sender_id_raw = getattr(raw, "sender_id", None)
+    sender_id: int | None
+    if sender_id_raw is None:
+        sender_id = None
+    else:
+        try:
+            sender_id = int(sender_id_raw)
+        except (TypeError, ValueError):
+            sender_id = None
 
     date = getattr(raw, "date", None)
-    if date is not None and date.tzinfo is None:
+    if date is None:
+        date = datetime.fromtimestamp(0, tz=timezone.utc)
+    elif date.tzinfo is None:
         date = date.replace(tzinfo=timezone.utc)
 
     return Message(

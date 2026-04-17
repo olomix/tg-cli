@@ -89,15 +89,16 @@ def test_search_passes_query_to_iter_messages() -> None:
     assert args == (entity,)
     assert kwargs["search"] == "hello world"
     assert kwargs["limit"] == 100
-    assert kwargs["offset_date"] is None
-    # No ``--since``: Telethon's default newest-first iteration is fine.
+    # No ``--since``: Telethon's default newest-first iteration is fine,
+    # no ``offset_date``/``reverse`` is needed.
+    assert kwargs.get("offset_date") is None
     assert kwargs.get("reverse") is not True
 
 
-def test_search_passes_since_with_reverse_for_newer_than_semantics() -> None:
-    """``offset_date`` in Telethon means "messages older than X" by
-    default; ``reverse=True`` flips it to "newer than X", which is what
-    ``--since`` documents."""
+def test_search_since_iterates_newest_first_without_reverse() -> None:
+    """``--since`` must cap to the newest matches within the window. We
+    iterate Telethon's default newest-first direction with no
+    ``offset_date``/``reverse`` and break on the cutoff client-side."""
     entity = _entity(1)
     client = _fake_client(entity=entity, history=[])
     result = _invoke(
@@ -105,22 +106,21 @@ def test_search_passes_since_with_reverse_for_newer_than_semantics() -> None:
     )
     assert result.exit_code == 0, result.output
     _, kwargs = client.iter_messages.call_args
-    assert kwargs["offset_date"] == datetime(
-        2026, 4, 15, 10, 0, tzinfo=timezone.utc
-    )
+    assert kwargs.get("offset_date") is None
     assert kwargs["search"] == "query"
-    assert kwargs["reverse"] is True
+    assert kwargs.get("reverse") is not True
 
 
-def test_search_with_since_reverses_list_for_newest_first_output() -> None:
-    """With ``reverse=True`` Telethon yields oldest→newest; the command
-    reverses the list so the documented newest-first ordering holds."""
+def test_search_with_since_returns_matches_newest_first() -> None:
+    """Search output is newest-first. With ``--since``, older matches
+    before the cutoff must be excluded."""
     entity = _entity(1)
+    # Fake Telethon newest-first iteration: ids 3..1, all after cutoff.
     history = [
         _msg(
-            id=1,
+            id=3,
             text="match",
-            date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
+            date=datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc),
         ),
         _msg(
             id=2,
@@ -128,9 +128,9 @@ def test_search_with_since_reverses_list_for_newest_first_output() -> None:
             date=datetime(2026, 4, 17, 11, 0, tzinfo=timezone.utc),
         ),
         _msg(
-            id=3,
+            id=1,
             text="match",
-            date=datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc),
+            date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
         ),
     ]
     client = _fake_client(entity=entity, history=history)
@@ -138,6 +138,38 @@ def test_search_with_since_reverses_list_for_newest_first_output() -> None:
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)
     assert [m["id"] for m in data] == [3, 2, 1]
+
+
+def test_search_since_stops_at_cutoff_and_keeps_newest() -> None:
+    """Regression: before the fix, ``--since`` + ``--limit`` returned
+    the OLDEST N matches after the cutoff. The command must iterate
+    newest-first with ``limit`` passed to Telethon directly so the
+    newest N matches win."""
+    entity = _entity(1)
+    # Simulate Telethon respecting ``limit=2`` newest-first.
+    history = [
+        _msg(
+            id=5,
+            text="match",
+            date=datetime(2026, 4, 17, 14, 0, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=4,
+            text="match",
+            date=datetime(2026, 4, 17, 13, 0, tzinfo=timezone.utc),
+        ),
+    ]
+    client = _fake_client(entity=entity, history=history)
+    result = _invoke(
+        client, "1", "match", "--since", "2026-04-17T10:00", "--limit", "2"
+    )
+    assert result.exit_code == 0, result.output
+    _, kwargs = client.iter_messages.call_args
+    assert kwargs["limit"] == 2
+    assert kwargs.get("offset_date") is None
+    assert kwargs.get("reverse") is not True
+    data = json.loads(result.stdout)
+    assert [m["id"] for m in data] == [5, 4]
 
 
 def test_search_respects_custom_limit() -> None:
