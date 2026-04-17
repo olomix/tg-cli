@@ -9,6 +9,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from telethon.errors import UsernameInvalidError, UsernameNotOccupiedError
 
 from tg_cli.commands import _resolve
 
@@ -130,6 +131,37 @@ def test_resolve_dialog_without_title_falls_back_to_name() -> None:
     client = _client([dialog])
     result = _run(_resolve.resolve(client, "fallback"))
     assert result is entity
+
+
+def test_resolve_numeric_id_value_error_becomes_group_not_found() -> None:
+    client = MagicMock()
+    client.get_entity = AsyncMock(
+        side_effect=ValueError("Cannot find any entity")
+    )
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "-100999"))
+    assert "-100999" in str(excinfo.value)
+
+
+def test_resolve_username_not_occupied_becomes_group_not_found() -> None:
+    # Telethon RPC errors need positional ``request`` arg in some versions;
+    # instantiate via ``__new__`` to avoid version-specific constructor drift.
+    exc = UsernameNotOccupiedError.__new__(UsernameNotOccupiedError)
+    Exception.__init__(exc, "USERNAME_NOT_OCCUPIED")
+    client = MagicMock()
+    client.get_entity = AsyncMock(side_effect=exc)
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "@nonexistent"))
+    assert "@nonexistent" in str(excinfo.value)
+
+
+def test_resolve_username_invalid_becomes_group_not_found() -> None:
+    exc = UsernameInvalidError.__new__(UsernameInvalidError)
+    Exception.__init__(exc, "USERNAME_INVALID")
+    client = MagicMock()
+    client.get_entity = AsyncMock(side_effect=exc)
+    with pytest.raises(_resolve.GroupNotFoundError):
+        _run(_resolve.resolve(client, "@bad handle"))
 
 
 def test_resolve_skips_dialogs_with_no_title_or_name() -> None:

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from telethon.errors import UsernameInvalidError, UsernameNotOccupiedError
+
 
 class GroupResolveError(Exception):
     """Base error for group resolution failures."""
@@ -50,13 +52,35 @@ async def resolve(client: Any, reference: str) -> Any:
 
     text = reference.strip()
 
+    # Telethon raises ``ValueError("Cannot find any entity ...")`` for
+    # unknown ids and ``UsernameNotOccupiedError`` / ``UsernameInvalidError``
+    # for bad ``@handles``. Wrap both so the skill's JSON-error contract
+    # holds: a typo like ``tg messages @nope`` must not leak a traceback.
     if _looks_like_int(text):
-        return await client.get_entity(int(text))
+        return await _get_entity_or_not_found(client, int(text), reference)
 
     if text.startswith("@"):
-        return await client.get_entity(text)
+        return await _get_entity_or_not_found(client, text, reference)
 
     return await _resolve_by_title(client, text)
+
+
+async def _get_entity_or_not_found(
+    client: Any, key: Any, reference: str
+) -> Any:
+    try:
+        return await client.get_entity(key)
+    except _ENTITY_LOOKUP_ERRORS as exc:
+        raise GroupNotFoundError(
+            f"no group matched {reference!r}"
+        ) from exc
+
+
+_ENTITY_LOOKUP_ERRORS = (
+    ValueError,
+    UsernameNotOccupiedError,
+    UsernameInvalidError,
+)
 
 
 def _looks_like_int(text: str) -> bool:
