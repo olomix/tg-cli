@@ -175,16 +175,16 @@ free). This is a one-time manual step documented in README.
 
 ### Task 6: `tg thread` command (fetch replies to a message)
 
-- [ ] implement `commands/thread.py`: `tg thread <group> <message_id>
+- [x] implement `commands/thread.py`: `tg thread <group> <message_id>
   [--limit N] [--pretty]` — uses `iter_messages(chat,
   reply_to=message_id, limit)`; includes the root message first, then
   replies
-- [ ] wire into `cli.py`
-- [ ] write tests for thread command with mocked client — verify root
+- [x] wire into `cli.py`
+- [x] write tests for thread command with mocked client — verify root
   message is first, replies follow in chronological order
-- [ ] write test for missing/invalid message id (non-zero exit, error
+- [x] write test for missing/invalid message id (non-zero exit, error
   JSON to stderr)
-- [ ] run `pytest` — must pass before task 7
+- [x] run `pytest` — must pass before task 7
 
 ### Task 7: Error handling and UX polish
 

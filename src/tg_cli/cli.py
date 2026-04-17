@@ -10,6 +10,7 @@ from .commands.groups import groups
 from .commands.login import login
 from .commands.messages import messages
 from .commands.search import search
+from .commands.thread import thread
 
 
 @click.group(help="Read your Telegram groups via MTProto (Telethon).")
@@ -22,6 +23,7 @@ main.add_command(login)
 main.add_command(groups)
 main.add_command(messages)
 main.add_command(search)
+main.add_command(thread)
 
 
 if __name__ == "__main__":
