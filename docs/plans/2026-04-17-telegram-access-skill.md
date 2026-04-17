@@ -162,16 +162,16 @@ free). This is a one-time manual step documented in README.
 
 ### Task 5: `tg search` command (full-text search in a group)
 
-- [ ] implement `commands/search.py`: `tg search <group> <query>
+- [x] implement `commands/search.py`: `tg search <group> <query>
   [--since <time>] [--limit N] [--pretty]` — uses
   `iter_messages(chat, search=query, offset_date, limit)`; reuses
   resolver and time parser from task 4; outputs same `Message` JSON
   shape
-- [ ] wire into `cli.py`
-- [ ] write tests for search command with mocked client — verify
+- [x] wire into `cli.py`
+- [x] write tests for search command with mocked client — verify
   query/since passed through, output shape matches `messages`
-- [ ] write test for empty-result case (empty JSON array, exit 0)
-- [ ] run `pytest` — must pass before task 6
+- [x] write test for empty-result case (empty JSON array, exit 0)
+- [x] run `pytest` — must pass before task 6
 
 ### Task 6: `tg thread` command (fetch replies to a message)
 
