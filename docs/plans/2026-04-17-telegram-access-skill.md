@@ -127,18 +127,18 @@ free). This is a one-time manual step documented in README.
 
 ### Task 3: `tg groups` command (list dialogs)
 
-- [ ] define `models.Group` dataclass (`id: int, title: str, type: str,
+- [x] define `models.Group` dataclass (`id: int, title: str, type: str,
   username: str|None, member_count: int|None`) with `to_dict()` for
   JSON serialisation
-- [ ] implement `commands/groups.py`: `tg groups [--type group|channel|all]
+- [x] implement `commands/groups.py`: `tg groups [--type group|channel|all]
   [--limit N]` — iterates `client.iter_dialogs()`, filters by type,
   prints JSON list to stdout
-- [ ] add `--pretty` flag for indented JSON output
-- [ ] wire into `cli.py`
-- [ ] write tests with mocked `iter_dialogs` returning varied dialog
+- [x] add `--pretty` flag for indented JSON output
+- [x] wire into `cli.py`
+- [x] write tests with mocked `iter_dialogs` returning varied dialog
   types — verify JSON shape, filtering, limit behaviour
-- [ ] write tests for error path when not logged in (no session)
-- [ ] run `pytest` — must pass before task 4
+- [x] write tests for error path when not logged in (no session)
+- [x] run `pytest` — must pass before task 4
 
 ### Task 4: `tg messages` command (fetch recent messages)
 

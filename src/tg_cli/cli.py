@@ -6,6 +6,7 @@ Subcommands are registered here. Each subcommand module exports a single
 
 import click
 
+from .commands.groups import groups
 from .commands.login import login
 
 
@@ -16,6 +17,7 @@ def main() -> None:
 
 
 main.add_command(login)
+main.add_command(groups)
 
 
 if __name__ == "__main__":
