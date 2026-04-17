@@ -142,23 +142,23 @@ free). This is a one-time manual step documented in README.
 
 ### Task 4: `tg messages` command (fetch recent messages)
 
-- [ ] implement time-string parser in `commands/_time.py`: accept
+- [x] implement time-string parser in `commands/_time.py`: accept
   `24h`, `7d`, `2026-04-15`, `2026-04-15T10:00` — return UTC `datetime`
-- [ ] implement group resolver in `commands/_resolve.py`: accept
+- [x] implement group resolver in `commands/_resolve.py`: accept
   numeric id, `@username`, or title (case-insensitive substring match
   against `iter_dialogs` result); raise on ambiguous match
-- [ ] define `models.Message` dataclass (`id, date, sender_id,
+- [x] define `models.Message` dataclass (`id, date, sender_id,
   sender_name, text, reply_to_id, group_id`) with `to_dict()`
-- [ ] implement `commands/messages.py`: `tg messages <group> [--since
+- [x] implement `commands/messages.py`: `tg messages <group> [--since
   <time>] [--limit N] [--pretty]` — uses `iter_messages(chat,
   offset_date, limit, reverse=True)`; prints JSON array
-- [ ] wire into `cli.py`
-- [ ] write tests for `_time.parse()` covering all accepted formats and
+- [x] wire into `cli.py`
+- [x] write tests for `_time.parse()` covering all accepted formats and
   invalid input
-- [ ] write tests for `_resolve.resolve()` covering id/username/title
+- [x] write tests for `_resolve.resolve()` covering id/username/title
   paths and ambiguity error
-- [ ] write tests for `messages` command with mocked client
-- [ ] run `pytest` — must pass before task 5
+- [x] write tests for `messages` command with mocked client
+- [x] run `pytest` — must pass before task 5
 
 ### Task 5: `tg search` command (full-text search in a group)
 

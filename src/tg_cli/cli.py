@@ -8,6 +8,7 @@ import click
 
 from .commands.groups import groups
 from .commands.login import login
+from .commands.messages import messages
 
 
 @click.group(help="Read your Telegram groups via MTProto (Telethon).")
@@ -18,6 +19,7 @@ def main() -> None:
 
 main.add_command(login)
 main.add_command(groups)
+main.add_command(messages)
 
 
 if __name__ == "__main__":
