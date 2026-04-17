@@ -108,22 +108,22 @@ free). This is a one-time manual step documented in README.
 
 ### Task 2: Config loader and login command
 
-- [ ] implement `config.py`: load `~/.config/tg-cli/config.toml` with
+- [x] implement `config.py`: load `~/.config/tg-cli/config.toml` with
   `api_id` (int) and `api_hash` (str); support `TG_CLI_CONFIG_DIR`
   env var override; raise clear error with setup instructions when
   missing
-- [ ] implement `client.py`: factory that returns an initialised
+- [x] implement `client.py`: factory that returns an initialised
   `TelegramClient` using session file at
   `{config_dir}/session.session`; handle absent session cleanly
-- [ ] implement `commands/login.py`: `tg login [--phone X]` flow —
+- [x] implement `commands/login.py`: `tg login [--phone X]` flow —
   interactive prompt for phone, code, and 2FA password if required;
   persist session file
-- [ ] wire `login` into `cli.py` command group
-- [ ] write tests for config loader (success, missing file, malformed
+- [x] wire `login` into `cli.py` command group
+- [x] write tests for config loader (success, missing file, malformed
   toml, env var override)
-- [ ] write tests for login command flow using mocked
+- [x] write tests for login command flow using mocked
   `TelegramClient.start` — verify prompt order and error paths
-- [ ] run `pytest` — must pass before task 3
+- [x] run `pytest` — must pass before task 3
 
 ### Task 3: `tg groups` command (list dialogs)
 

@@ -1,17 +1,21 @@
-"""Top-level Click command group.
+"""Top-level Click command group for ``tg``.
 
-Subcommands are wired in by later tasks (login, groups, messages,
-search, thread). This skeleton exists so the entry point resolves
-and tests can confirm it is importable.
+Subcommands are registered here. Each subcommand module exports a single
+``click.Command`` (or group) object that gets attached to ``main``.
 """
 
 import click
+
+from .commands.login import login
 
 
 @click.group(help="Read your Telegram groups via MTProto (Telethon).")
 @click.version_option(package_name="tg-cli")
 def main() -> None:
-    """Entry point referenced by the `tg` console script."""
+    """Entry point referenced by the ``tg`` console script."""
+
+
+main.add_command(login)
 
 
 if __name__ == "__main__":
