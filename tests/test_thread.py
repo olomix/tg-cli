@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from click.testing import CliRunner
+from telethon.errors import MsgIdInvalidError, PeerIdInvalidError
 
 from tg_cli import cli
 from tg_cli.config import ConfigError
@@ -277,6 +278,64 @@ def test_thread_resolves_group_by_title_substring() -> None:
     client.get_messages.assert_awaited_once_with(entity, ids=5)
     args, _ = client.iter_messages.call_args
     assert args[0] is entity
+
+
+def test_thread_converts_peer_id_invalid_on_get_messages() -> None:
+    """``PeerIdInvalidError`` from Telethon must surface as the
+    documented ``MessageNotFoundError`` JSON error, not a traceback."""
+    entity = _entity(1)
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.disconnect = AsyncMock()
+    client.is_user_authorized = AsyncMock(return_value=True)
+    client.get_entity = AsyncMock(return_value=entity)
+    client.iter_dialogs = MagicMock(return_value=_AsyncIter([]))
+    client.get_messages = AsyncMock(
+        side_effect=PeerIdInvalidError(request=None)
+    )
+    client.iter_messages = MagicMock(return_value=_AsyncIter([]))
+    with patch(
+        "tg_cli.commands.thread.make_client", return_value=client
+    ):
+        result = CliRunner().invoke(cli.main, ["thread", "1", "5"])
+    assert result.exit_code != 0
+    assert '"type": "MessageNotFoundError"' in result.stderr
+    assert "not found" in result.stderr.lower()
+
+
+def test_thread_converts_msg_id_invalid_on_iter_messages() -> None:
+    """When ``reply_to`` targets a chat without discussion threads,
+    Telethon raises ``MsgIdInvalidError``; must surface as
+    ``MessageNotFoundError`` JSON."""
+    entity = _entity(1)
+    root = _msg(
+        id=5,
+        text="root",
+        date=datetime(2026, 4, 17, tzinfo=timezone.utc),
+    )
+
+    class _ThrowingIter:
+        def __aiter__(self) -> _ThrowingIter:
+            return self
+
+        async def __anext__(self) -> Any:
+            raise MsgIdInvalidError(request=None)
+
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.disconnect = AsyncMock()
+    client.is_user_authorized = AsyncMock(return_value=True)
+    client.get_entity = AsyncMock(return_value=entity)
+    client.iter_dialogs = MagicMock(return_value=_AsyncIter([]))
+    client.get_messages = AsyncMock(return_value=root)
+    client.iter_messages = MagicMock(return_value=_ThrowingIter())
+    with patch(
+        "tg_cli.commands.thread.make_client", return_value=client
+    ):
+        result = CliRunner().invoke(cli.main, ["thread", "1", "5"])
+    assert result.exit_code != 0
+    assert '"type": "MessageNotFoundError"' in result.stderr
+    assert "reply thread" in result.stderr.lower()
 
 
 def test_thread_disconnects_on_success() -> None:

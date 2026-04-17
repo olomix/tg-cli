@@ -10,9 +10,9 @@ import click
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Message
+from ._message import to_message
 from ._resolve import resolve
 from ._time import parse as parse_time
-from .messages import _to_message
 
 
 @click.command()
@@ -59,15 +59,21 @@ async def _run_search(
         entity = await resolve(client, group)
         group_id = int(getattr(entity, "id", 0))
         collected: list[Message] = []
-        # Telethon's search returns newest→oldest; leave order as-is so
-        # callers see the most relevant recent hits first.
+        # Telethon's ``offset_date`` means "messages older than X" in the
+        # default (newest-first) direction; we need "newer than X". Pass
+        # ``reverse=True`` to flip that semantic, collect oldest→newest,
+        # then reverse the list so callers still see newest matches first.
+        reverse = offset_date is not None
         async for raw in client.iter_messages(
             entity,
             limit=limit,
             offset_date=offset_date,
             search=query,
+            reverse=reverse,
         ):
-            collected.append(_to_message(raw, group_id))
+            collected.append(to_message(raw, group_id))
+        if reverse:
+            collected.reverse()
         return collected
     finally:
         await client.disconnect()

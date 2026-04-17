@@ -130,7 +130,7 @@ be `null`.
 ```
 
 Known `type` values include `AuthError`, `ConfigError`,
-`TimeParseError`, `GroupResolveError`, `AmbiguousGroupError`,
+`TimeParseError`, `GroupNotFoundError`, `AmbiguousGroupError`,
 `MessageNotFoundError`, `FloodWaitError`.
 
 For `FloodWaitError`, the message includes `retry after N seconds` —

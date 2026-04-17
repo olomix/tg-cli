@@ -46,11 +46,13 @@ This exposes a `tg` command on your `PATH`.
    Override the directory with `TG_CLI_CONFIG_DIR=/some/path` if needed.
 3. Authenticate:
    ```bash
-   tg login
+   tg login              # interactive: phone prompt + login code
+   tg login --phone +15551234567   # skip the phone prompt
    ```
-   Prompts for phone number, login code, and (if enabled) 2FA password.
-   The session persists at `~/.config/tg-cli/session.session` so
-   subsequent commands run non-interactively.
+   Prompts for phone number (unless `--phone` is given), login code,
+   and (if enabled) 2FA password. The session persists at
+   `~/.config/tg-cli/session.session` so subsequent commands run
+   non-interactively.
 
 ## Commands
 
@@ -102,7 +104,8 @@ tg search "My Dev Group" "deploy" --since 30d
 
 ### `tg thread <group> <message_id> [--limit N] [--pretty]`
 
-Fetch a root message and its replies, chronologically.
+Fetch a root message and its replies. The root message is returned
+first, then replies in chronological (oldest-first) order.
 
 ```bash
 tg thread "My Dev Group" 12345

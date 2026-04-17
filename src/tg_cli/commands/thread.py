@@ -6,12 +6,13 @@ import asyncio
 import json
 
 import click
+from telethon import errors as telethon_errors
 
 from ..client import make_client
 from ..errors import AuthError, MessageNotFoundError, handle_errors
 from ..models import Message
+from ._message import to_message
 from ._resolve import resolve
-from .messages import _to_message
 
 
 @click.command()
@@ -50,22 +51,39 @@ async def _collect_thread(
         entity = await resolve(client, group)
         group_id = int(getattr(entity, "id", 0))
 
-        root_raw = await client.get_messages(entity, ids=message_id)
+        try:
+            root_raw = await client.get_messages(entity, ids=message_id)
+        except telethon_errors.PeerIdInvalidError as exc:
+            raise MessageNotFoundError(
+                f"message {message_id} not found in {group!r}"
+            ) from exc
         if root_raw is None:
             raise MessageNotFoundError(
                 f"message {message_id} not found in {group!r}"
             )
 
-        collected: list[Message] = [_to_message(root_raw, group_id)]
+        collected: list[Message] = [to_message(root_raw, group_id)]
         # ``reverse=True`` yields replies oldest→newest, matching the
         # chronological ordering readers expect in a thread view.
-        async for raw in client.iter_messages(
-            entity,
-            limit=limit,
-            reply_to=message_id,
-            reverse=True,
-        ):
-            collected.append(_to_message(raw, group_id))
+        # Telethon raises ``MsgIdInvalidError`` / ``PeerIdInvalidError``
+        # when ``reply_to`` is used in a chat that does not support reply
+        # threads (broadcast-only channels, DMs). Surface that as a clean
+        # ``MessageNotFoundError`` so the JSON-error contract holds.
+        try:
+            async for raw in client.iter_messages(
+                entity,
+                limit=limit,
+                reply_to=message_id,
+                reverse=True,
+            ):
+                collected.append(to_message(raw, group_id))
+        except (
+            telethon_errors.MsgIdInvalidError,
+            telethon_errors.PeerIdInvalidError,
+        ) as exc:
+            raise MessageNotFoundError(
+                f"message {message_id} has no reply thread in {group!r}"
+            ) from exc
         return collected
     finally:
         await client.disconnect()

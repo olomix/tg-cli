@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import timezone
-from typing import Any
 
 import click
 
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Message
+from ._message import to_message
 from ._resolve import resolve
 from ._time import parse as parse_time
 
@@ -59,74 +58,23 @@ async def _collect_messages(
         entity = await resolve(client, group)
         group_id = int(getattr(entity, "id", 0))
         collected: list[Message] = []
-        # ``reverse=True`` makes Telethon yield oldest→newest, which is
-        # what callers expect for digest-style consumption.
-        async for raw in client.iter_messages(
-            entity,
-            limit=limit,
-            offset_date=offset_date,
-            reverse=True,
-        ):
-            collected.append(_to_message(raw, group_id))
+        if offset_date is not None:
+            # ``reverse=True`` + ``offset_date`` yields oldest→newest from
+            # ``offset_date`` onward, which matches the documented order.
+            async for raw in client.iter_messages(
+                entity,
+                limit=limit,
+                offset_date=offset_date,
+                reverse=True,
+            ):
+                collected.append(to_message(raw, group_id))
+        else:
+            # Without a cutoff, ``reverse=True`` would start at the very
+            # beginning of the chat. Fetch newest→oldest, then reverse to
+            # keep the documented oldest-first output.
+            async for raw in client.iter_messages(entity, limit=limit):
+                collected.append(to_message(raw, group_id))
+            collected.reverse()
         return collected
     finally:
         await client.disconnect()
-
-
-def _to_message(raw: Any, group_id: int) -> Message:
-    """Build a :class:`Message` from a Telethon ``Message`` object."""
-    sender = getattr(raw, "sender", None)
-    sender_id = getattr(raw, "sender_id", None)
-    if sender_id is not None:
-        sender_id = int(sender_id)
-
-    date = getattr(raw, "date", None)
-    if date is not None and date.tzinfo is None:
-        date = date.replace(tzinfo=timezone.utc)
-
-    reply_to_id = _reply_to_id(raw)
-
-    return Message(
-        id=int(getattr(raw, "id", 0)),
-        date=date,
-        sender_id=sender_id,
-        sender_name=_sender_display_name(sender),
-        text=_message_text(raw),
-        reply_to_id=reply_to_id,
-        group_id=group_id,
-    )
-
-
-def _message_text(raw: Any) -> str:
-    text = getattr(raw, "message", None)
-    if text is None:
-        text = getattr(raw, "text", None)
-    return str(text) if text else ""
-
-
-def _reply_to_id(raw: Any) -> int | None:
-    reply_to = getattr(raw, "reply_to", None)
-    if reply_to is None:
-        return None
-    rid = getattr(reply_to, "reply_to_msg_id", None)
-    return int(rid) if rid is not None else None
-
-
-def _sender_display_name(sender: Any) -> str | None:
-    if sender is None:
-        return None
-    title = getattr(sender, "title", None)
-    if title:
-        return str(title)
-    parts = [
-        str(p)
-        for p in (
-            getattr(sender, "first_name", None),
-            getattr(sender, "last_name", None),
-        )
-        if p
-    ]
-    if parts:
-        return " ".join(parts)
-    username = getattr(sender, "username", None)
-    return str(username) if username else None

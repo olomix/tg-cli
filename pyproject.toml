@@ -9,7 +9,6 @@ authors = [{ name = "Oleg Lomaka" }]
 dependencies = [
     "telethon>=1.36",
     "click>=8.1",
-    "python-dateutil>=2.9",
     "tomli>=2.0; python_version < '3.11'",
 ]
 

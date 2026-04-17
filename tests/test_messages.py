@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from click.testing import CliRunner
 
 from tg_cli import cli
-from tg_cli.commands import messages as messages_mod
+from tg_cli.commands import _message as message_mod
 from tg_cli.config import ConfigError
 from tg_cli.models import Message
 
@@ -108,14 +108,10 @@ def test_messages_outputs_contract_shape() -> None:
     sender = SimpleNamespace(
         first_name="Alice", last_name="Doe", username="alice"
     )
+    # Without ``--since`` the command fetches newest→oldest from
+    # Telethon (no ``reverse=True``), so the fake iterator yields in
+    # that order; the command reverses to output oldest-first.
     history = [
-        _msg(
-            id=1,
-            text="hello",
-            date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
-            sender=sender,
-            sender_id=42,
-        ),
         _msg(
             id=2,
             text="reply",
@@ -123,6 +119,13 @@ def test_messages_outputs_contract_shape() -> None:
             sender=sender,
             sender_id=42,
             reply_to_msg_id=1,
+        ),
+        _msg(
+            id=1,
+            text="hello",
+            date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
+            sender=sender,
+            sender_id=42,
         ),
     ]
     client = _fake_client(entity=entity, history=history)
@@ -152,7 +155,9 @@ def test_messages_outputs_contract_shape() -> None:
     client.get_entity.assert_awaited_once_with("@dev")
 
 
-def test_messages_passes_limit_and_reverse_to_iter_messages() -> None:
+def test_messages_without_since_fetches_newest_without_reverse() -> None:
+    """No ``--since``: must not pass ``reverse=True`` (that starts at the
+    beginning of chat history); should fetch newest messages instead."""
     entity = _entity(1, "Group")
     client = _fake_client(entity=entity, history=[])
     result = _invoke(client, "1", "--limit", "5")
@@ -160,8 +165,8 @@ def test_messages_passes_limit_and_reverse_to_iter_messages() -> None:
     args, kwargs = client.iter_messages.call_args
     assert args == (entity,)
     assert kwargs["limit"] == 5
-    assert kwargs["reverse"] is True
-    assert kwargs["offset_date"] is None
+    assert kwargs.get("reverse") is not True
+    assert kwargs.get("offset_date") is None
 
 
 def test_messages_default_limit_is_100() -> None:
@@ -173,7 +178,7 @@ def test_messages_default_limit_is_100() -> None:
     assert kwargs["limit"] == 100
 
 
-def test_messages_since_passed_through_as_utc_datetime() -> None:
+def test_messages_since_passed_through_as_utc_datetime_with_reverse() -> None:
     entity = _entity(1)
     client = _fake_client(entity=entity, history=[])
     result = _invoke(client, "1", "--since", "2026-04-15T10:00")
@@ -182,6 +187,36 @@ def test_messages_since_passed_through_as_utc_datetime() -> None:
     assert kwargs["offset_date"] == datetime(
         2026, 4, 15, 10, 0, tzinfo=timezone.utc
     )
+    # ``reverse=True`` is required so ``offset_date`` means "newer than".
+    assert kwargs["reverse"] is True
+
+
+def test_messages_without_since_reverses_list_for_oldest_first() -> None:
+    """Telethon yields newest→oldest without ``reverse``; command must
+    reverse the Python list so output is documented oldest-first."""
+    entity = _entity(1)
+    history = [
+        _msg(
+            id=3,
+            text="newest",
+            date=datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=2,
+            text="middle",
+            date=datetime(2026, 4, 17, 11, 0, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=1,
+            text="oldest",
+            date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
+        ),
+    ]
+    client = _fake_client(entity=entity, history=history)
+    result = _invoke(client, "1")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert [m["id"] for m in data] == [1, 2, 3]
 
 
 def test_messages_invalid_since_returns_clean_error() -> None:
@@ -265,20 +300,23 @@ def test_messages_sender_name_falls_back_to_title_then_username() -> None:
     user_sender = SimpleNamespace(
         first_name=None, last_name=None, username="onlyhandle"
     )
+    # Fake iterator yields newest→oldest (Telethon default without
+    # ``--since``); the command reverses for oldest-first output, so
+    # index 0 of the JSON corresponds to the last entry here.
     history = [
-        _msg(
-            id=1,
-            text="from chat",
-            date=datetime(2026, 4, 17, tzinfo=timezone.utc),
-            sender=chat_sender,
-            sender_id=10,
-        ),
         _msg(
             id=2,
             text="from user",
             date=datetime(2026, 4, 17, tzinfo=timezone.utc),
             sender=user_sender,
             sender_id=20,
+        ),
+        _msg(
+            id=1,
+            text="from chat",
+            date=datetime(2026, 4, 17, tzinfo=timezone.utc),
+            sender=chat_sender,
+            sender_id=10,
         ),
     ]
     client = _fake_client(entity=entity, history=history)
@@ -364,7 +402,7 @@ def test_to_message_helper_handles_missing_attributes() -> None:
         sender_id=None,
         reply_to=None,
     )
-    msg = messages_mod._to_message(raw, group_id=42)
+    msg = message_mod.to_message(raw, group_id=42)
     assert msg.text == ""
     assert msg.sender_id is None
     assert msg.sender_name is None

@@ -19,5 +19,11 @@ def make_client(config: Config | None = None) -> TelegramClient:
     network I/O.
     """
     cfg = config if config is not None else load_config()
-    cfg.config_dir.mkdir(parents=True, exist_ok=True)
+    # Session file grants full account access; restrict directory to
+    # owner-only so a shared-machine user cannot read the session.
+    cfg.config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        cfg.config_dir.chmod(0o700)
+    except (OSError, NotImplementedError):
+        pass
     return TelegramClient(str(cfg.session_path), cfg.api_id, cfg.api_hash)

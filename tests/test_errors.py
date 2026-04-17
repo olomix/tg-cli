@@ -310,8 +310,9 @@ def test_login_still_handles_2fa_inline_not_as_error() -> None:
             input="98765\nmypassword\n",
         )
     assert result.exit_code == 0, result.stderr
-    # No JSON error on stderr — login completed normally.
-    assert "error" not in result.stderr.lower() or "Login" in result.stderr
+    # No JSON error payload on stderr — login completed normally.
+    assert '"error":' not in result.stderr
+    assert '"type":' not in result.stderr
 
 
 # --- helpers -------------------------------------------------------------

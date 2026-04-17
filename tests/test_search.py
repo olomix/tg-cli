@@ -90,9 +90,14 @@ def test_search_passes_query_to_iter_messages() -> None:
     assert kwargs["search"] == "hello world"
     assert kwargs["limit"] == 100
     assert kwargs["offset_date"] is None
+    # No ``--since``: Telethon's default newest-first iteration is fine.
+    assert kwargs.get("reverse") is not True
 
 
-def test_search_passes_since_as_utc_datetime() -> None:
+def test_search_passes_since_with_reverse_for_newer_than_semantics() -> None:
+    """``offset_date`` in Telethon means "messages older than X" by
+    default; ``reverse=True`` flips it to "newer than X", which is what
+    ``--since`` documents."""
     entity = _entity(1)
     client = _fake_client(entity=entity, history=[])
     result = _invoke(
@@ -104,6 +109,35 @@ def test_search_passes_since_as_utc_datetime() -> None:
         2026, 4, 15, 10, 0, tzinfo=timezone.utc
     )
     assert kwargs["search"] == "query"
+    assert kwargs["reverse"] is True
+
+
+def test_search_with_since_reverses_list_for_newest_first_output() -> None:
+    """With ``reverse=True`` Telethon yields oldest→newest; the command
+    reverses the list so the documented newest-first ordering holds."""
+    entity = _entity(1)
+    history = [
+        _msg(
+            id=1,
+            text="match",
+            date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=2,
+            text="match",
+            date=datetime(2026, 4, 17, 11, 0, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=3,
+            text="match",
+            date=datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc),
+        ),
+    ]
+    client = _fake_client(entity=entity, history=history)
+    result = _invoke(client, "1", "match", "--since", "24h")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert [m["id"] for m in data] == [3, 2, 1]
 
 
 def test_search_respects_custom_limit() -> None:
