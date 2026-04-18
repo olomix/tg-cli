@@ -203,13 +203,13 @@ Callers that use `marked_peer_id(entity)` (like `messages.py`) automatically emi
 
 ### Task 6: Verify acceptance criteria
 
-- [ ] confirm: `tg groups` no longer emits migrated zombies (member_count 0, hollow rows)
-- [ ] confirm: passing an old basic-chat id to `tg messages`, `tg search`, `tg thread` returns messages from the migrated supergroup
-- [ ] confirm: resolving a migrated chat by title substring also transparently redirects
-- [ ] confirm: non-migrated dialogs (live basic chats, supergroups, channels, DMs filtered earlier) are unchanged
-- [ ] run full suite: `uv run pytest -v`
-- [ ] run lint: `uv run ruff check src tests`
-- [ ] (optional) run `uv run pytest --cov=tg_cli` and eyeball coverage on the new branches
+- [x] confirm: `tg groups` no longer emits migrated zombies (member_count 0, hollow rows) — `tests/test_groups.py::test_dialog_to_group_skips_migrated_chat`, `test_groups_excludes_migrated_chat_from_listing`, and `tests/test_acceptance.py::test_migrated_chat_is_filtered_from_groups_and_redirects_messages`
+- [x] confirm: passing an old basic-chat id to `tg messages`, `tg search`, `tg thread` returns messages from the migrated supergroup — resolver tests in `tests/test_resolve.py::test_resolve_numeric_id_follows_migration_to_channel` (plus the three migration-error variants) cover the shared `_get_entity_or_not_found` path used by all three commands; `tests/test_acceptance.py::test_migrated_chat_is_filtered_from_groups_and_redirects_messages` exercises `tg messages` end-to-end. `tg search`/`tg thread` share the same resolver, so explicit acceptance tests for them would be redundant — transitive coverage documented here.
+- [x] confirm: resolving a migrated chat by title substring also transparently redirects — `tests/test_resolve.py::test_resolve_title_substring_follows_migration_to_channel` and `test_resolve_title_substring_migration_follow_channel_invalid`
+- [x] confirm: non-migrated dialogs (live basic chats, supergroups, channels, DMs filtered earlier) are unchanged — `tests/test_groups.py::test_dialog_to_group_keeps_non_migrated_chat`, `tests/test_resolve.py::test_resolve_non_migrated_numeric_id_does_not_double_lookup`, `test_resolve_username_live_channel_no_migration_follow`, `test_resolve_title_substring_live_channel_no_migration_follow`, plus the pre-existing resolver/listing regression suite
+- [x] run full suite: `uv run pytest -v` — `211 passed in 0.32s`
+- [x] run lint: `uv run ruff check src tests` — `All checks passed!`
+- [x] (optional) run `uv run pytest --cov=tg_cli` and eyeball coverage on the new branches — `_peer.py` 100%, `_resolve.py` 100%, `groups.py` 96% (uncovered lines 78, 135-136 are pre-existing, not on the new migration branches); overall 94%
 
 ### Task 7: [Final] Update documentation
 
