@@ -196,10 +196,10 @@ Callers that use `marked_peer_id(entity)` (like `messages.py`) automatically emi
 **Files:**
 - Modify: `tests/test_acceptance.py`
 
-- [ ] add acceptance test that builds a mocked client returning a migrated `Chat` and its target `Channel` in `iter_dialogs`, runs `tg groups` and `tg messages -- -<old_chat_id>`, and asserts:
+- [x] add acceptance test that builds a mocked client returning a migrated `Chat` and its target `Channel` in `iter_dialogs`, runs `tg groups` and `tg messages -- -<old_chat_id>`, and asserts:
       - zombie chat is absent from `tg groups` JSON
       - `tg messages` returns messages from the target supergroup, with the migrated-to `group_id` (the `-100…` one, not the original `-<bare>` on the command line)
-- [ ] run `uv run pytest tests/test_acceptance.py -v` — must pass before task 6
+- [x] run `uv run pytest tests/test_acceptance.py -v` — must pass before task 6
 
 ### Task 6: Verify acceptance criteria
 
