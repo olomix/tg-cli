@@ -86,11 +86,17 @@ Fetch recent messages from `<group>`, oldest first.
 ```bash
 tg messages "My Dev Group" --since 24h
 tg messages @mydevgroup --since 7d --limit 200
-tg messages -1001234567890 --since 2026-04-15T10:00
+tg messages --since 2026-04-15T10:00 -- -1001234567890
 ```
 
 `<group>` accepts a numeric id, `@username`, or a case-insensitive
 substring of the title (errors on ambiguous match).
+
+> **Negative numeric ids.** Raw supergroup/channel ids start with `-`
+> (e.g. `-1001234567890`), which the CLI parser mistakes for an option
+> and rejects with `No such option: -1...`. Pass options first and put
+> the id after a `--` separator, or use the `@username` / title form
+> instead. The same applies to `tg search` and `tg thread`.
 
 `TIME` accepts `24h`, `7d`, `2026-04-15`, or `2026-04-15T10:00` (UTC).
 
