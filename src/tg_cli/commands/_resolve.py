@@ -165,7 +165,7 @@ async def _resolve_by_title(client: Any, query: str) -> Any:
         )
     if len(matches) > 1:
         raise AmbiguousGroupError(query, [t for t, _ in matches])
-    return matches[0][1]
+    return await _maybe_follow_migration(client, matches[0][1], reference=query)
 
 
 def _dialog_title(dialog: Any) -> str | None:

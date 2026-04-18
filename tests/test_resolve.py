@@ -283,3 +283,47 @@ def test_resolve_username_live_channel_no_migration_follow() -> None:
     result = _run(_resolve.resolve(client, "@livechannel"))
     assert result is channel
     client.get_entity.assert_awaited_once_with("@livechannel")
+
+
+def test_resolve_title_substring_follows_migration_to_channel() -> None:
+    migrated = _migrated_chat(title="Old Group Name")
+    channel = SimpleNamespace(id=999, title="New Supergroup", megagroup=True)
+    dialog = SimpleNamespace(
+        entity=migrated, id=migrated.id, name=migrated.title
+    )
+    client = _client([dialog], get_entity=channel)
+    result = _run(_resolve.resolve(client, "old group name"))
+    assert result is channel
+    # Only the follow-through lookup fires; no initial ``get_entity`` for the
+    # title path (that branch walks dialogs instead).
+    client.get_entity.assert_awaited_once_with(migrated.migrated_to)
+
+
+def test_resolve_title_substring_migration_follow_channel_invalid() -> None:
+    migrated = _migrated_chat(title="Old Group Name")
+    dialog = SimpleNamespace(
+        entity=migrated, id=migrated.id, name=migrated.title
+    )
+    exc = ChannelInvalidError.__new__(ChannelInvalidError)
+    Exception.__init__(exc, "CHANNEL_INVALID")
+    client = _client([dialog], get_entity=exc)
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "old group name"))
+    assert "migrated" in str(excinfo.value)
+    # Error message names the user's query, not some internal id.
+    assert "old group name" in str(excinfo.value)
+
+
+def test_resolve_title_substring_live_channel_no_get_entity_call() -> None:
+    # Regression guard: the existing title-substring path must not gain a
+    # redundant ``get_entity`` lookup for non-migrated matches.
+    live_channel = SimpleNamespace(
+        id=1001, title="Live Channel", megagroup=True, migrated_to=None
+    )
+    dialog = SimpleNamespace(
+        entity=live_channel, id=live_channel.id, name=live_channel.title
+    )
+    client = _client([dialog])
+    result = _run(_resolve.resolve(client, "live channel"))
+    assert result is live_channel
+    client.get_entity.assert_not_awaited()

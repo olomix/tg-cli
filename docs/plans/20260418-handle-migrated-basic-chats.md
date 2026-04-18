@@ -185,11 +185,11 @@ Callers that use `marked_peer_id(entity)` (like `messages.py`) automatically emi
 - Modify: `src/tg_cli/commands/_resolve.py`
 - Modify: `tests/test_resolve.py`
 
-- [ ] write failing test: `resolve(client, "old group name")` where `iter_dialogs` yields a migrated `Chat` whose title matches — assert `_maybe_follow_migration` fires and the returned entity is the target `Channel`
-- [ ] write failing test: same as above but the second `get_entity` raises `ChannelInvalidError` — surfaces `GroupNotFoundError`
-- [ ] write regression test: title-substring match against a live `Channel` (no migration pointer) returns the channel without any `get_entity` call — guards against redundant lookups
-- [ ] in `_resolve_by_title`, before returning `matches[0][1]`, pass it through `_maybe_follow_migration(client, entity, reference=query)`
-- [ ] run `uv run pytest tests/test_resolve.py -v` — must pass before task 5
+- [x] write failing test: `resolve(client, "old group name")` where `iter_dialogs` yields a migrated `Chat` whose title matches — assert `_maybe_follow_migration` fires and the returned entity is the target `Channel`
+- [x] write failing test: same as above but the second `get_entity` raises `ChannelInvalidError` — surfaces `GroupNotFoundError`
+- [x] write regression test: title-substring match against a live `Channel` (no migration pointer) returns the channel without any `get_entity` call — guards against redundant lookups
+- [x] in `_resolve_by_title`, before returning `matches[0][1]`, pass it through `_maybe_follow_migration(client, entity, reference=query)`
+- [x] run `uv run pytest tests/test_resolve.py -v` — must pass before task 5
 
 ### Task 5: Acceptance test spanning listing + resolve
 
