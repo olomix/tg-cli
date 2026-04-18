@@ -40,13 +40,21 @@ _CHANNEL_MARKED_OFFSET = -1_000_000_000_000
 
 
 def _small_group(
-    *, id: int, title: str, members: int | None = None
+    *,
+    id: int,
+    title: str,
+    members: int | None = None,
+    migrated_to: Any | None = None,
 ) -> SimpleNamespace:
     # Telethon's ``Chat.id`` is a bare positive integer; marked peer id
     # is ``-id``. Test fixtures mirror that shape so the id-mapping path
     # is actually exercised.
     entity = SimpleNamespace(
-        id=id, title=title, participants_count=members, username=None
+        id=id,
+        title=title,
+        participants_count=members,
+        username=None,
+        migrated_to=migrated_to,
     )
     return SimpleNamespace(entity=entity, id=-id, name=title)
 
@@ -224,6 +232,37 @@ def test_dialog_to_group_classifies_each_kind() -> None:
     )
     assert chan is not None and chan.type == "channel"
     assert chan.id == _CHANNEL_MARKED_OFFSET - 3
+
+
+def test_dialog_to_group_skips_migrated_chat() -> None:
+    # ``Chat.migrated_to`` pointing at an ``InputChannel`` marks a zombie
+    # basic chat whose messages now live in a supergroup — filter it out.
+    pointer = SimpleNamespace(channel_id=555, access_hash=0)
+    dialog = _small_group(id=42, title="Old Team", migrated_to=pointer)
+    assert _dialog_to_group(dialog) is None
+
+
+def test_dialog_to_group_keeps_non_migrated_chat() -> None:
+    # Regression: a live ``Chat`` with ``migrated_to=None`` must still
+    # pass through unchanged.
+    dialog = _small_group(id=42, title="Live Team", members=3)
+    group = _dialog_to_group(dialog)
+    assert group is not None
+    assert group.title == "Live Team"
+    assert group.id == -42
+
+
+def test_groups_excludes_migrated_chat_from_listing() -> None:
+    pointer = SimpleNamespace(channel_id=7, access_hash=0)
+    dialogs = [
+        _small_group(id=42, title="Old Team", migrated_to=pointer),
+        _supergroup(id=7, title="New Team", members=50),
+    ]
+    exit_code, out, _err, _ = _run_groups(dialogs)
+    assert exit_code == 0, out
+    data = json.loads(out)
+    titles = [d["title"] for d in data]
+    assert titles == ["New Team"]
 
 
 def test_groups_returns_json_array_with_contract_fields() -> None:

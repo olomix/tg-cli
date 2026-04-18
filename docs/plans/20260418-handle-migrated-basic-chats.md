@@ -154,13 +154,13 @@ Callers that use `marked_peer_id(entity)` (like `messages.py`) automatically emi
 - Modify: `src/tg_cli/commands/groups.py`
 - Modify: `tests/test_groups.py`
 
-- [ ] extend `_small_group` test helper (or add sibling `_migrated_chat`) in `tests/test_groups.py` to accept a `migrated_to` value
-- [ ] write failing test: `_dialog_to_group` returns `None` for a `Chat` double whose `migrated_to` is an `InputChannel`-shaped value
-- [ ] write failing test: `tg groups` JSON output excludes the migrated chat when the dialog list contains both the zombie and the migrated-to supergroup
-- [ ] write regression test: a non-migrated `Chat` (`migrated_to=None`) still appears in the output unchanged
-- [ ] import `_is_migrated_chat` in `src/tg_cli/commands/groups.py`
-- [ ] in `_dialog_to_group`, after `_classify` returns, short-circuit to `None` when `_is_migrated_chat(entity)` is true
-- [ ] run `uv run pytest tests/test_groups.py -v` — must pass before task 3
+- [x] extend `_small_group` test helper (or add sibling `_migrated_chat`) in `tests/test_groups.py` to accept a `migrated_to` value
+- [x] write failing test: `_dialog_to_group` returns `None` for a `Chat` double whose `migrated_to` is an `InputChannel`-shaped value
+- [x] write failing test: `tg groups` JSON output excludes the migrated chat when the dialog list contains both the zombie and the migrated-to supergroup
+- [x] write regression test: a non-migrated `Chat` (`migrated_to=None`) still appears in the output unchanged
+- [x] import `_is_migrated_chat` in `src/tg_cli/commands/groups.py`
+- [x] in `_dialog_to_group`, after `_classify` returns, short-circuit to `None` when `_is_migrated_chat(entity)` is true
+- [x] run `uv run pytest tests/test_groups.py -v` — must pass before task 3
 
 ### Task 3: Auto-follow migration in resolver (numeric-id & `@handle` paths)
 
