@@ -18,7 +18,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from telethon.errors import UsernameInvalidError, UsernameNotOccupiedError
+from telethon.errors import (
+    ChannelInvalidError,
+    ChannelPrivateError,
+    UsernameInvalidError,
+    UsernameNotOccupiedError,
+)
+
+from tg_cli.commands._peer import _is_migrated_chat
 
 
 class GroupResolveError(Exception):
@@ -79,12 +86,37 @@ async def _get_entity_or_not_found(
         raise GroupNotFoundError(
             f"no group matched {reference!r}"
         ) from exc
+    entity = await _maybe_follow_migration(client, entity, reference)
     if not _is_group_entity(entity):
         raise GroupNotFoundError(
             f"no group matched {reference!r} (resolved to a non-group "
             "entity such as a DM or bot)"
         )
     return entity
+
+
+async def _maybe_follow_migration(
+    client: Any, entity: Any, reference: str
+) -> Any:
+    """Follow ``Chat.migrated_to`` to the replacement supergroup.
+
+    Old basic-chat ids (copy-pasted from previous listings or memory)
+    must transparently resolve to the new supergroup so downstream
+    commands don't silently return an empty history. Returns ``entity``
+    unchanged when it is not a migrated chat.
+    """
+    if not _is_migrated_chat(entity):
+        return entity
+    try:
+        return await client.get_entity(entity.migrated_to)
+    except _MIGRATION_FOLLOW_ERRORS as exc:
+        # ``access_hash`` embedded in ``migrated_to`` may be stale across
+        # sessions; Telethon signals that via ``ChannelInvalidError`` /
+        # ``ChannelPrivateError`` rather than a plain ``ValueError``.
+        raise GroupNotFoundError(
+            f"group {reference!r} was migrated to a supergroup that "
+            "could not be resolved (run `tg groups` to find its new id)"
+        ) from exc
 
 
 def _is_group_entity(entity: Any) -> bool:
@@ -101,6 +133,13 @@ _ENTITY_LOOKUP_ERRORS = (
     ValueError,
     UsernameNotOccupiedError,
     UsernameInvalidError,
+)
+
+
+_MIGRATION_FOLLOW_ERRORS = (
+    ValueError,
+    ChannelInvalidError,
+    ChannelPrivateError,
 )
 
 

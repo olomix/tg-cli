@@ -168,16 +168,16 @@ Callers that use `marked_peer_id(entity)` (like `messages.py`) automatically emi
 - Modify: `src/tg_cli/commands/_resolve.py`
 - Modify: `tests/test_resolve.py`
 
-- [ ] extend the `_client()` test fixture in `tests/test_resolve.py` so `get_entity` can accept a **list** of side-effects (enabling tests that need two sequential `get_entity` calls). Back-compat: when a single value is passed, wrap it in a one-item list.
-- [ ] write failing test: `resolve(client, "-584241293")` where the first `get_entity` returns a migrated `Chat` double and the second returns a `Channel` double — assert the returned entity is the `Channel` and that `get_entity` was awaited twice (second call with the `migrated_to` pointer)
-- [ ] write failing test: migrated-chat path where the second `get_entity` raises `ValueError` — resolver raises `GroupNotFoundError` with a message mentioning migration
-- [ ] write failing test: migrated-chat path where the second `get_entity` raises `telethon.errors.ChannelInvalidError` — same `GroupNotFoundError` surfaces (staleness case)
-- [ ] write failing test: migrated-chat path where the second `get_entity` raises `telethon.errors.ChannelPrivateError` — same `GroupNotFoundError` surfaces
-- [ ] write regression test: non-migrated numeric id resolves in exactly one `get_entity` call (no extra lookup)
-- [ ] write regression test: `@username` resolving to a live `Channel` is unaffected (no migration follow-up)
-- [ ] add `_is_migrated_chat` import and a new `_maybe_follow_migration(client, entity, reference)` async helper in `src/tg_cli/commands/_resolve.py`; define `_MIGRATION_FOLLOW_ERRORS = (ValueError, ChannelInvalidError, ChannelPrivateError)`
-- [ ] call `_maybe_follow_migration` from `_get_entity_or_not_found` immediately after the initial `client.get_entity` succeeds, before `_is_group_entity` runs
-- [ ] run `uv run pytest tests/test_resolve.py -v` — must pass before task 4
+- [x] extend the `_client()` test fixture in `tests/test_resolve.py` so `get_entity` can accept a **list** of side-effects (enabling tests that need two sequential `get_entity` calls). Back-compat: when a single value is passed, wrap it in a one-item list.
+- [x] write failing test: `resolve(client, "-584241293")` where the first `get_entity` returns a migrated `Chat` double and the second returns a `Channel` double — assert the returned entity is the `Channel` and that `get_entity` was awaited twice (second call with the `migrated_to` pointer)
+- [x] write failing test: migrated-chat path where the second `get_entity` raises `ValueError` — resolver raises `GroupNotFoundError` with a message mentioning migration
+- [x] write failing test: migrated-chat path where the second `get_entity` raises `telethon.errors.ChannelInvalidError` — same `GroupNotFoundError` surfaces (staleness case)
+- [x] write failing test: migrated-chat path where the second `get_entity` raises `telethon.errors.ChannelPrivateError` — same `GroupNotFoundError` surfaces
+- [x] write regression test: non-migrated numeric id resolves in exactly one `get_entity` call (no extra lookup)
+- [x] write regression test: `@username` resolving to a live `Channel` is unaffected (no migration follow-up)
+- [x] add `_is_migrated_chat` import and a new `_maybe_follow_migration(client, entity, reference)` async helper in `src/tg_cli/commands/_resolve.py`; define `_MIGRATION_FOLLOW_ERRORS = (ValueError, ChannelInvalidError, ChannelPrivateError)`
+- [x] call `_maybe_follow_migration` from `_get_entity_or_not_found` immediately after the initial `client.get_entity` succeeds, before `_is_group_entity` runs
+- [x] run `uv run pytest tests/test_resolve.py -v` — must pass before task 4
 
 ### Task 4: Auto-follow migration in resolver (title-substring path)
 

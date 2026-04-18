@@ -9,7 +9,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from telethon.errors import UsernameInvalidError, UsernameNotOccupiedError
+from telethon.errors import (
+    ChannelInvalidError,
+    ChannelPrivateError,
+    UsernameInvalidError,
+    UsernameNotOccupiedError,
+)
 
 from tg_cli.commands import _resolve
 
@@ -44,7 +49,15 @@ def _client(
     if get_entity is None:
         client.get_entity = AsyncMock(return_value=SimpleNamespace())
     else:
-        client.get_entity = AsyncMock(side_effect=[get_entity])
+        # Accept either a single value (back-compat, wrapped into a
+        # one-shot side_effect list) or a sequence of values for tests
+        # that need multiple sequential ``get_entity`` calls (e.g.
+        # follow-through from a migrated basic chat).
+        if isinstance(get_entity, (list, tuple)):
+            side_effect = list(get_entity)
+        else:
+            side_effect = [get_entity]
+        client.get_entity = AsyncMock(side_effect=side_effect)
     return client
 
 
@@ -204,3 +217,69 @@ def test_resolve_skips_dialogs_with_no_title_or_name() -> None:
     client = _client([nameless, target])
     result = _run(_resolve.resolve(client, "hits"))
     assert result is target.entity
+
+
+def _migrated_chat(title: str = "Old Group") -> SimpleNamespace:
+    """Basic ``Chat`` double whose ``migrated_to`` points at a channel."""
+    pointer = SimpleNamespace(channel_id=999, access_hash=42)
+    return SimpleNamespace(id=584241293, title=title, migrated_to=pointer)
+
+
+def test_resolve_numeric_id_follows_migration_to_channel() -> None:
+    migrated = _migrated_chat()
+    channel = SimpleNamespace(id=999, title="New Supergroup", megagroup=True)
+    client = _client(get_entity=[migrated, channel])
+    result = _run(_resolve.resolve(client, "-584241293"))
+    assert result is channel
+    assert client.get_entity.await_count == 2
+    # Second call uses the ``migrated_to`` pointer verbatim.
+    second_call = client.get_entity.await_args_list[1]
+    assert second_call.args == (migrated.migrated_to,)
+
+
+def test_resolve_migration_follow_value_error_raises_group_not_found() -> None:
+    migrated = _migrated_chat()
+    client = _client(get_entity=[migrated, ValueError("stale hash")])
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "-584241293"))
+    assert "migrated" in str(excinfo.value)
+
+
+def test_resolve_migration_follow_channel_invalid_raises_not_found() -> None:
+    migrated = _migrated_chat()
+    exc = ChannelInvalidError.__new__(ChannelInvalidError)
+    Exception.__init__(exc, "CHANNEL_INVALID")
+    client = _client(get_entity=[migrated, exc])
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "-584241293"))
+    assert "migrated" in str(excinfo.value)
+
+
+def test_resolve_migration_follow_channel_private_raises_not_found() -> None:
+    migrated = _migrated_chat()
+    exc = ChannelPrivateError.__new__(ChannelPrivateError)
+    Exception.__init__(exc, "CHANNEL_PRIVATE")
+    client = _client(get_entity=[migrated, exc])
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "-584241293"))
+    assert "migrated" in str(excinfo.value)
+
+
+def test_resolve_non_migrated_numeric_id_does_not_double_lookup() -> None:
+    live_chat = SimpleNamespace(
+        id=1234, title="Live Basic Chat", migrated_to=None
+    )
+    client = _client(get_entity=live_chat)
+    result = _run(_resolve.resolve(client, "-1234"))
+    assert result is live_chat
+    client.get_entity.assert_awaited_once_with(-1234)
+
+
+def test_resolve_username_live_channel_no_migration_follow() -> None:
+    channel = SimpleNamespace(
+        id=1001, title="Live Channel", megagroup=True, migrated_to=None
+    )
+    client = _client(get_entity=channel)
+    result = _run(_resolve.resolve(client, "@livechannel"))
+    assert result is channel
+    client.get_entity.assert_awaited_once_with("@livechannel")
