@@ -94,6 +94,25 @@ def test_load_config_permission_error_not_reported_as_missing(
     assert "tg login" not in msg
 
 
+def test_load_config_read_error_surfaces_config_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``tomllib.load`` can raise ``OSError`` mid-read (EIO on flaky FS,
+    NFS stall, etc.) even when ``open()`` succeeded. That failure must
+    round-trip through ``ConfigError`` so the CLI's JSON-error contract
+    holds instead of leaking a raw traceback."""
+    path = tmp_path / "config.toml"
+    _write(path, 'api_id = 1\napi_hash = "x"\n')
+
+    def _raising_load(_f: object) -> object:
+        raise OSError("flaky fs")
+
+    monkeypatch.setattr(cfg_mod.tomllib, "load", _raising_load)
+    with pytest.raises(ConfigError, match="Could not read") as exc:
+        load_config(tmp_path)
+    assert str(path) in str(exc.value)
+
+
 def test_load_config_disappeared_file_surfaces_missing_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

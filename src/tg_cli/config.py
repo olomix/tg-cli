@@ -94,6 +94,12 @@ def load_config(config_dir: Path | None = None) -> Config:
             data = tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"Malformed TOML in {path}: {e}") from e
+    # A mid-read ``OSError`` (EIO on a flaky FS, NFS stall, etc.) must
+    # surface through the same ``ConfigError`` channel as the open-time
+    # failure above; otherwise the CLI's JSON-error contract leaks a
+    # raw traceback to the user.
+    except OSError as e:
+        raise ConfigError(f"Could not read {path}: {e}") from e
 
     # The config file holds ``api_hash`` — a long-lived Telegram secret.
     # Tighten perms to 0o600 best-effort each load so a stale 0o644 from
