@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from telethon import TelegramClient
 
-from .config import Config, load_config
+from .config import Config, ConfigError, load_config
 
 
 def make_client(config: Config | None = None) -> TelegramClient:
@@ -21,7 +21,15 @@ def make_client(config: Config | None = None) -> TelegramClient:
     cfg = config if config is not None else load_config()
     # Session file grants full account access; restrict directory to
     # owner-only so a shared-machine user cannot read the session.
-    cfg.config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Convert filesystem failures (TG_CLI_CONFIG_DIR pointing at a regular
+    # file, an unwritable parent, etc.) to ConfigError so the CLI's
+    # JSON-error contract holds instead of leaking a raw traceback.
+    try:
+        cfg.config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError as e:
+        raise ConfigError(
+            f"Could not create config directory {cfg.config_dir}: {e}"
+        ) from e
     try:
         cfg.config_dir.chmod(0o700)
     except (OSError, NotImplementedError):

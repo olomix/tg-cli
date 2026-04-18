@@ -17,3 +17,11 @@ def test_help_runs_cleanly() -> None:
     result = runner.invoke(cli.main, ["--help"])
     assert result.exit_code == 0
     assert "Telegram" in result.output
+
+
+def test_version_runs_cleanly() -> None:
+    """`tg --version` exits 0 even without installed package metadata."""
+    runner = CliRunner()
+    result = runner.invoke(cli.main, ["--version"])
+    assert result.exit_code == 0
+    assert "0.1.0" in result.output

@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from tg_cli.client import make_client
-from tg_cli.config import Config
+from tg_cli.config import Config, ConfigError
 
 
 def test_make_client_creates_dir_and_passes_session_path(
@@ -30,3 +32,16 @@ def test_make_client_loads_config_when_none(tmp_path: Path) -> None:
         make_client()
     mock_load.assert_called_once_with()
     mock_tc.assert_called_once_with(str(tmp_path / "session"), 7, "h")
+
+
+def test_make_client_raises_config_error_on_mkdir_failure(
+    tmp_path: Path,
+) -> None:
+    cfg = Config(api_id=1, api_hash="h", config_dir=tmp_path / "cfg")
+    with patch.object(
+        Path, "mkdir", side_effect=PermissionError("denied")
+    ):
+        with pytest.raises(ConfigError) as excinfo:
+            make_client(cfg)
+    assert str(cfg.config_dir) in str(excinfo.value)
+    assert "denied" in str(excinfo.value)

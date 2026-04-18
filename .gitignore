@@ -30,6 +30,8 @@ env/
 # Telethon session files (contain auth tokens)
 *.session
 *.session-journal
+*.session-wal
+*.session-shm
 
 # uv
 uv.lock
