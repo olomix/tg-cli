@@ -74,16 +74,24 @@ def _tighten_session_perms_from_client(client: Any) -> None:
 
 
 def _tighten_session_perms(session_path: Path) -> None:
-    """Restrict the Telethon session file to ``0o600``.
+    """Restrict the Telethon session files to ``0o600``.
 
     The session grants full account access; a shared-machine user must
-    not be able to read it. Silently skipped on platforms where chmod
-    is a no-op (e.g. Windows).
+    not be able to read it. SQLite may create ``-wal``/``-shm`` sidecars
+    alongside the main ``.session`` file when WAL mode is active — those
+    hold the same secrets, so they must be chmodded too. Silently
+    skipped on platforms where chmod is a no-op (e.g. Windows) and on
+    sidecars that don't exist (WAL mode not in use).
     """
     sqlite_path = session_path.with_suffix(".session")
-    if not sqlite_path.exists():
-        return
-    try:
-        sqlite_path.chmod(0o600)
-    except (OSError, NotImplementedError):
-        pass
+    for path in (
+        sqlite_path,
+        sqlite_path.with_name(sqlite_path.name + "-wal"),
+        sqlite_path.with_name(sqlite_path.name + "-shm"),
+    ):
+        try:
+            path.chmod(0o600)
+        except (FileNotFoundError, NotImplementedError):
+            continue
+        except OSError:
+            continue

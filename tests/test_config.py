@@ -168,6 +168,32 @@ def test_load_config_api_hash_wrong_type(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
+def test_load_config_api_id_zero_rejected(tmp_path: Path) -> None:
+    """``api_id = 0`` would slip past the type check but fail later in
+    Telethon with an unactionable error; reject it at config load."""
+    _write(tmp_path / "config.toml", 'api_id = 0\napi_hash = "x"\n')
+    with pytest.raises(ConfigError, match="api_id.*must be positive"):
+        load_config(tmp_path)
+
+
+def test_load_config_api_id_negative_rejected(tmp_path: Path) -> None:
+    _write(tmp_path / "config.toml", 'api_id = -5\napi_hash = "x"\n')
+    with pytest.raises(ConfigError, match="api_id.*must be positive"):
+        load_config(tmp_path)
+
+
+def test_load_config_api_hash_empty_rejected(tmp_path: Path) -> None:
+    _write(tmp_path / "config.toml", 'api_id = 1\napi_hash = ""\n')
+    with pytest.raises(ConfigError, match="api_hash.*non-empty"):
+        load_config(tmp_path)
+
+
+def test_load_config_api_hash_whitespace_rejected(tmp_path: Path) -> None:
+    _write(tmp_path / "config.toml", 'api_id = 1\napi_hash = "   "\n')
+    with pytest.raises(ConfigError, match="api_hash.*non-empty"):
+        load_config(tmp_path)
+
+
 def test_env_var_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

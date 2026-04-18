@@ -136,7 +136,12 @@ def test_search_with_since_returns_matches_newest_first() -> None:
         ),
     ]
     client = _fake_client(entity=entity, history=history)
-    result = _invoke(client, "1", "match", "--since", "24h")
+    # Absolute ``--since`` strictly before all fixture dates keeps the
+    # test deterministic — a relative window like ``24h`` would drift
+    # past the fixtures once wall-clock moves past the fixture dates.
+    result = _invoke(
+        client, "1", "match", "--since", "2026-01-01T00:00"
+    )
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)
     assert [m["id"] for m in data] == [3, 2, 1]

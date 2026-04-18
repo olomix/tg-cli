@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from click.testing import CliRunner
@@ -12,6 +13,7 @@ from telethon.errors import (
 )
 
 from tg_cli import cli
+from tg_cli.commands.login import _tighten_session_perms
 from tg_cli.config import ConfigError
 
 
@@ -136,6 +138,40 @@ def test_login_invalid_code_emits_json_error() -> None:
     assert '"type": "AuthError"' in result.stderr
     assert "login code" in result.stderr.lower()
     client.disconnect.assert_awaited_once()
+
+
+def test_tighten_session_perms_chmods_sidecars(tmp_path: Path) -> None:
+    """SQLite can spill session secrets into ``-wal``/``-shm`` sidecars
+    when WAL mode is active; all three files must be locked to 0o600,
+    otherwise tightening the main ``.session`` file is a false sense
+    of security."""
+    session_base = tmp_path / "session"
+    sqlite_path = tmp_path / "session.session"
+    wal_path = tmp_path / "session.session-wal"
+    shm_path = tmp_path / "session.session-shm"
+    for p in (sqlite_path, wal_path, shm_path):
+        p.write_bytes(b"x")
+        p.chmod(0o644)
+
+    _tighten_session_perms(session_base)
+
+    for p in (sqlite_path, wal_path, shm_path):
+        assert p.stat().st_mode & 0o777 == 0o600, p
+
+
+def test_tighten_session_perms_skips_missing_sidecars(tmp_path: Path) -> None:
+    """WAL mode is optional; when sidecars are absent the chmod loop
+    must silently skip them rather than raising."""
+    session_base = tmp_path / "session"
+    sqlite_path = tmp_path / "session.session"
+    sqlite_path.write_bytes(b"x")
+    sqlite_path.chmod(0o644)
+
+    _tighten_session_perms(session_base)
+
+    assert sqlite_path.stat().st_mode & 0o777 == 0o600
+    assert not (tmp_path / "session.session-wal").exists()
+    assert not (tmp_path / "session.session-shm").exists()
 
 
 def test_login_invalid_2fa_password_emits_json_error() -> None:

@@ -133,4 +133,16 @@ def load_config(config_dir: Path | None = None) -> Config:
             f"api_hash in {path} must be a str, got "
             f"{type(api_hash).__name__}."
         )
+    # Fail fast on obviously invalid credentials. Telethon would
+    # eventually surface a far less actionable runtime error (e.g.
+    # "API_ID_INVALID") well after connect; catching it here keeps the
+    # setup-hint channel pointed at the broken file.
+    if api_id <= 0:
+        raise ConfigError(
+            f"api_id in {path} must be positive, got {api_id}."
+        )
+    if not api_hash.strip():
+        raise ConfigError(
+            f"api_hash in {path} must be a non-empty string."
+        )
     return Config(api_id=api_id, api_hash=api_hash, config_dir=directory)
