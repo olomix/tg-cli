@@ -56,7 +56,9 @@ def _msg(
 
 
 def _entity(id: int, title: str = "Group") -> SimpleNamespace:
-    return SimpleNamespace(id=id, title=title)
+    # Bare positive id shape matches real Telethon ``Channel``; the
+    # command code converts it to the marked peer id for ``group_id``.
+    return SimpleNamespace(id=id, title=title, megagroup=True, broadcast=False)
 
 
 def _fake_client(
@@ -104,7 +106,9 @@ def test_message_to_dict_serialises_date_as_iso_string() -> None:
 
 
 def test_messages_outputs_contract_shape() -> None:
-    entity = _entity(-1001234567890, "Dev")
+    # Bare channel id ``1234567890`` → marked peer id ``-1001234567890``
+    # in the output per the documented JSON contract.
+    entity = _entity(1234567890, "Dev")
     sender = SimpleNamespace(
         first_name="Alice", last_name="Doe", username="alice"
     )

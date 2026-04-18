@@ -55,7 +55,9 @@ def _msg(
 
 
 def _entity(id: int, title: str = "Group") -> SimpleNamespace:
-    return SimpleNamespace(id=id, title=title)
+    # Bare positive id + channel flags match real Telethon shape; the
+    # command converts this to a marked peer id for ``group_id`` output.
+    return SimpleNamespace(id=id, title=title, megagroup=True, broadcast=False)
 
 
 def _fake_client(
@@ -86,7 +88,8 @@ def _invoke(client: MagicMock, *args: str) -> Any:
 
 
 def test_thread_includes_root_first_then_chronological_replies() -> None:
-    entity = _entity(-1001234567890, "Dev")
+    # Bare channel id ``1234567890`` → marked peer id ``-1001234567890``.
+    entity = _entity(1234567890, "Dev")
     sender = SimpleNamespace(
         first_name="Alice", last_name="Doe", username="alice"
     )
@@ -238,10 +241,9 @@ def test_thread_surfaces_config_error() -> None:
 def test_thread_missing_message_id_argument_errors() -> None:
     result = CliRunner().invoke(cli.main, ["thread", "1"])
     assert result.exit_code != 0
-    assert (
-        "MESSAGE_ID" in result.output
-        or "message_id" in result.output.lower()
-    )
+    payload = json.loads(result.stderr)
+    assert payload["type"] == "UsageError"
+    assert "MESSAGE_ID" in payload["error"]
 
 
 def test_thread_non_integer_message_id_rejected() -> None:
@@ -249,7 +251,9 @@ def test_thread_non_integer_message_id_rejected() -> None:
         cli.main, ["thread", "1", "not-an-int"]
     )
     assert result.exit_code != 0
-    assert "not-an-int" in result.output or "integer" in result.output
+    payload = json.loads(result.stderr)
+    assert payload["type"] == "UsageError"
+    assert "not-an-int" in payload["error"]
 
 
 def test_thread_resolves_group_by_title_substring() -> None:

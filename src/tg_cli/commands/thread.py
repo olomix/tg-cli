@@ -12,6 +12,7 @@ from ..client import make_client
 from ..errors import AuthError, MessageNotFoundError, handle_errors
 from ..models import Message
 from ._message import to_message
+from ._peer import marked_peer_id
 from ._resolve import resolve
 
 
@@ -49,7 +50,7 @@ async def _collect_thread(
         if not await client.is_user_authorized():
             raise AuthError()
         entity = await resolve(client, group)
-        group_id = int(getattr(entity, "id", 0))
+        group_id = marked_peer_id(entity)
 
         try:
             root_raw = await client.get_messages(entity, ids=message_id)

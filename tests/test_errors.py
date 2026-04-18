@@ -288,6 +288,44 @@ def test_thread_missing_message_emits_json() -> None:
     assert "not found" in payload["error"].lower()
 
 
+# --- Click parse/usage failures are covered by the JSON contract too
+# (see ``_JsonErrorGroup`` in ``cli.py``). Regression for Codex review.
+
+@pytest.mark.parametrize(
+    "argv,needle",
+    [
+        # Unknown subcommand.
+        (["bogus"], "bogus"),
+        # Missing required argument.
+        (["messages"], "GROUP"),
+        (["search", "g"], "QUERY"),
+        (["thread", "g"], "MESSAGE_ID"),
+        # Bad argument type.
+        (["thread", "g", "not-an-int"], "not-an-int"),
+        # Invalid option value.
+        (["groups", "--type", "nonsense"], "nonsense"),
+        (["groups", "--limit", "0"], "0"),
+    ],
+)
+def test_click_usage_errors_emit_json(
+    argv: list[str], needle: str
+) -> None:
+    result = CliRunner().invoke(cli.main, argv)
+    assert result.exit_code != 0
+    payload = _parse_error(result.stderr)
+    assert payload["type"] == "UsageError"
+    assert needle in payload["error"]
+
+
+def test_help_flag_still_prints_plain_text() -> None:
+    """``--help`` must keep Click's plain-text output (not JSON)."""
+    result = CliRunner().invoke(cli.main, ["--help"])
+    assert result.exit_code == 0
+    # Help goes to stdout; no JSON error on stderr.
+    assert result.stderr == ""
+    assert "Usage:" in result.stdout
+
+
 def test_login_config_error_emits_json() -> None:
     with patch(
         "tg_cli.commands.login.make_client",

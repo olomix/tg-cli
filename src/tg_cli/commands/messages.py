@@ -12,6 +12,7 @@ from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Message
 from ._message import to_message
+from ._peer import marked_peer_id
 from ._resolve import resolve
 from ._time import parse as parse_time
 
@@ -57,7 +58,7 @@ async def _collect_messages(
         if not await client.is_user_authorized():
             raise AuthError()
         entity = await resolve(client, group)
-        group_id = int(getattr(entity, "id", 0))
+        group_id = marked_peer_id(entity)
         collected: list[Message] = []
         # Iterate newest-first so ``--limit`` caps to the most recent
         # messages (not the earliest ones). With ``--since``, stop once

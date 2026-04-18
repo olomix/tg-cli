@@ -7,10 +7,12 @@ import json
 from typing import Any
 
 import click
+from telethon.tl import types as _tl
 
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Group
+from ._peer import marked_peer_id
 
 _TYPE_CHOICES = ("group", "channel", "all")
 
@@ -87,7 +89,7 @@ def _dialog_to_group(dialog: Any) -> Group | None:
     if kind is None:
         return None
     return Group(
-        id=int(getattr(entity, "id", dialog.id)),
+        id=marked_peer_id(entity),
         title=_entity_title(entity, dialog),
         type=kind,
         username=getattr(entity, "username", None),
@@ -95,19 +97,28 @@ def _dialog_to_group(dialog: Any) -> Group | None:
     )
 
 
+_CHANNEL_TYPES: tuple[type, ...] = (_tl.Channel, _tl.ChannelForbidden)
+
+
 def _classify(entity: Any) -> str | None:
     """Return ``"group"``/``"supergroup"``/``"channel"`` or ``None``.
 
     User entities (DMs, bots) lack a ``title`` attribute and return
-    ``None``. Channel entities distinguish supergroups from broadcast
-    channels via the ``megagroup`` / ``broadcast`` flags; plain ``Chat``
-    objects (small groups) have neither flag.
+    ``None``. Real Telethon ``Channel`` and ``ChannelForbidden``
+    instances are always treated as channel variants (supergroup vs
+    broadcast/gigagroup); any other titled entity is a plain ``Chat``
+    (small group).
     """
     if getattr(entity, "title", None) is None:
         return None
+    if isinstance(entity, _CHANNEL_TYPES):
+        return "supergroup" if entity.megagroup else "channel"
+    # Flag-based fallback so ``SimpleNamespace`` test doubles still work.
     if getattr(entity, "megagroup", False):
         return "supergroup"
-    if getattr(entity, "broadcast", False):
+    if getattr(entity, "broadcast", False) or getattr(
+        entity, "gigagroup", False
+    ):
         return "channel"
     return "group"
 

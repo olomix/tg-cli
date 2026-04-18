@@ -54,7 +54,9 @@ def _msg(
 
 
 def _entity(id: int, title: str = "Group") -> SimpleNamespace:
-    return SimpleNamespace(id=id, title=title)
+    # Bare positive id + channel flags match real Telethon shape; the
+    # command converts this to a marked peer id for ``group_id`` output.
+    return SimpleNamespace(id=id, title=title, megagroup=True, broadcast=False)
 
 
 def _fake_client(
@@ -182,7 +184,8 @@ def test_search_respects_custom_limit() -> None:
 
 
 def test_search_output_matches_messages_shape() -> None:
-    entity = _entity(-1001234567890, "Dev")
+    # Bare channel id ``1234567890`` → marked peer id ``-1001234567890``.
+    entity = _entity(1234567890, "Dev")
     sender = SimpleNamespace(
         first_name="Alice", last_name="Doe", username="alice"
     )

@@ -9,9 +9,14 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from click.testing import CliRunner
+from telethon.tl import types as _tl
 
 from tg_cli import cli
-from tg_cli.commands.groups import _dialog_to_group, _matches_filter
+from tg_cli.commands.groups import (
+    _classify,
+    _dialog_to_group,
+    _matches_filter,
+)
 from tg_cli.config import ConfigError
 from tg_cli.models import Group
 
@@ -31,13 +36,19 @@ class _AsyncDialogIter:
         return self._items.pop(0)
 
 
+_CHANNEL_MARKED_OFFSET = -1_000_000_000_000
+
+
 def _small_group(
     *, id: int, title: str, members: int | None = None
 ) -> SimpleNamespace:
+    # Telethon's ``Chat.id`` is a bare positive integer; marked peer id
+    # is ``-id``. Test fixtures mirror that shape so the id-mapping path
+    # is actually exercised.
     entity = SimpleNamespace(
         id=id, title=title, participants_count=members, username=None
     )
-    return SimpleNamespace(entity=entity, id=id, name=title)
+    return SimpleNamespace(entity=entity, id=-id, name=title)
 
 
 def _supergroup(
@@ -55,7 +66,9 @@ def _supergroup(
         username=username,
         participants_count=members,
     )
-    return SimpleNamespace(entity=entity, id=id, name=title)
+    return SimpleNamespace(
+        entity=entity, id=_CHANNEL_MARKED_OFFSET - id, name=title
+    )
 
 
 def _channel(
@@ -73,7 +86,9 @@ def _channel(
         username=username,
         participants_count=members,
     )
-    return SimpleNamespace(entity=entity, id=id, name=title)
+    return SimpleNamespace(
+        entity=entity, id=_CHANNEL_MARKED_OFFSET - id, name=title
+    )
 
 
 def _user_dialog(*, id: int, first_name: str) -> SimpleNamespace:
@@ -141,11 +156,59 @@ def test_dialog_to_group_skips_user_dms() -> None:
     assert _dialog_to_group(_user_dialog(id=7, first_name="Alice")) is None
 
 
+def test_classify_real_channel_variants_are_all_channel_flavoured() -> None:
+    # Gigagroup and flag-less ``Channel`` must NOT fall through to the
+    # small-``Chat`` branch — they're still Telethon ``Channel`` peers
+    # with the ``-1e12`` marked-id offset.
+    giga = _tl.Channel(
+        id=1,
+        title="Giga",
+        photo=None,
+        date=None,
+        gigagroup=True,
+    )
+    assert _classify(giga) == "channel"
+
+    plain_channel = _tl.Channel(
+        id=2,
+        title="Plain",
+        photo=None,
+        date=None,
+    )
+    assert _classify(plain_channel) == "channel"
+
+    mega = _tl.Channel(
+        id=3,
+        title="Mega",
+        photo=None,
+        date=None,
+        megagroup=True,
+    )
+    assert _classify(mega) == "supergroup"
+
+
+def test_classify_channel_forbidden_is_channel_flavoured() -> None:
+    # ``ChannelForbidden`` is a sibling of ``Channel`` (not a subclass)
+    # returned for kicked/banned channel dialogs. It must classify as
+    # a channel variant, not fall through to the small-``Chat`` branch.
+    broadcast_forbidden = _tl.ChannelForbidden(
+        id=10, access_hash=0, title="Banned broadcast"
+    )
+    assert _classify(broadcast_forbidden) == "channel"
+
+    mega_forbidden = _tl.ChannelForbidden(
+        id=11, access_hash=0, title="Banned mega", megagroup=True
+    )
+    assert _classify(mega_forbidden) == "supergroup"
+
+
 def test_dialog_to_group_classifies_each_kind() -> None:
     small = _dialog_to_group(
         _small_group(id=1, title="Small", members=3)
     )
     assert small is not None and small.type == "group"
+    # Small ``Chat`` marked id is ``-bare``.
+    assert small.id == -1
 
     mega = _dialog_to_group(
         _supergroup(id=2, title="Mega", username="meg", members=1000)
@@ -153,17 +216,20 @@ def test_dialog_to_group_classifies_each_kind() -> None:
     assert mega is not None and mega.type == "supergroup"
     assert mega.username == "meg"
     assert mega.member_count == 1000
+    # ``Channel`` (supergroup) marked id is ``-1e12 - bare``.
+    assert mega.id == _CHANNEL_MARKED_OFFSET - 2
 
     chan = _dialog_to_group(
         _channel(id=3, title="News", username="news", members=500)
     )
     assert chan is not None and chan.type == "channel"
+    assert chan.id == _CHANNEL_MARKED_OFFSET - 3
 
 
 def test_groups_returns_json_array_with_contract_fields() -> None:
     dialogs = [
         _supergroup(
-            id=-1001234567890,
+            id=1234567890,
             title="My Dev Group",
             username="mydevgroup",
             members=42,
@@ -172,6 +238,10 @@ def test_groups_returns_json_array_with_contract_fields() -> None:
     exit_code, out, _err, _ = _run_groups(dialogs)
     assert exit_code == 0, out
     data = json.loads(out)
+    # Output id must be the Telethon *marked* peer id
+    # (``-1_000_000_000_000 - bare`` for channels/supergroups) so
+    # downstream ``tg messages/search/thread`` calls round-trip through
+    # ``client.get_entity`` without being misinterpreted as a user id.
     assert data == [
         {
             "id": -1001234567890,
@@ -255,7 +325,7 @@ def test_groups_pretty_flag_indents_output() -> None:
     assert "\n" in pretty_out.rstrip()
     assert json.loads(pretty_out) == [
         {
-            "id": 1,
+            "id": -1,
             "title": "Small",
             "type": "group",
             "username": None,
