@@ -52,6 +52,16 @@ def _looks_like_channel(entity: Any) -> bool:
     )
 
 
+def is_group_entity(entity: Any) -> bool:
+    """Return ``True`` for ``Chat``/``Channel`` entities.
+
+    Telethon ``User`` objects (DMs, bots) lack a ``title`` attribute; a
+    truthy ``title`` is the shape-test shared by the dialog lister and
+    the resolver so they stay in sync on what counts as a group.
+    """
+    return bool(getattr(entity, "title", None))
+
+
 def is_migrated_chat(entity: Any) -> bool:
     """Return True for a basic ``Chat`` that was migrated to a supergroup.
 
@@ -61,9 +71,5 @@ def is_migrated_chat(entity: Any) -> bool:
     ``Channel``/``ChannelForbidden`` never carry this attribute, so a
     missing attribute reads as "not migrated" — safe to call on any
     peer-like object.
-
-    Public (no leading underscore) because this helper is deliberately
-    shared across sibling modules (``commands.groups`` and
-    ``commands._resolve``); mirrors ``marked_peer_id``'s visibility.
     """
     return getattr(entity, "migrated_to", None) is not None

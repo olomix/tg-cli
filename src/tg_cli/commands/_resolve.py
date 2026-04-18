@@ -25,7 +25,7 @@ from telethon.errors import (
     UsernameNotOccupiedError,
 )
 
-from tg_cli.commands._peer import is_migrated_chat
+from ._peer import is_group_entity, is_migrated_chat
 
 
 class GroupResolveError(Exception):
@@ -87,7 +87,7 @@ async def _get_entity_or_not_found(
             f"no group matched {reference!r}"
         ) from exc
     entity = await _maybe_follow_migration(client, entity, reference)
-    if not _is_group_entity(entity):
+    if not is_group_entity(entity):
         raise GroupNotFoundError(
             f"no group matched {reference!r} (resolved to a non-group "
             "entity such as a DM or bot)"
@@ -122,16 +122,6 @@ async def _maybe_follow_migration(
         ) from exc
 
 
-def _is_group_entity(entity: Any) -> bool:
-    """Return ``True`` for ``Chat``/``Channel`` entities.
-
-    Telethon ``User`` objects (DMs, bots) lack a ``title`` attribute.
-    We mirror the same shape-test ``commands.groups`` uses to filter
-    DMs out of dialog listings, keeping resolver and lister consistent.
-    """
-    return bool(getattr(entity, "title", None))
-
-
 _ENTITY_LOOKUP_ERRORS = (
     ValueError,
     UsernameNotOccupiedError,
@@ -160,12 +150,34 @@ async def _resolve_by_title(client: Any, query: str) -> Any:
             f"no group matched {query!r} (searched all dialogs)"
         )
 
-    # A migrated zombie and its replacement supergroup can both appear
-    # in ``iter_dialogs`` and (when the user's substring happens to span
-    # the shared name) both match. Follow migrations up front and dedupe
-    # by post-migration entity id so the legitimate single target isn't
-    # misreported as ambiguous. ``id(obj)`` is the fallback key for test
-    # doubles that lack a stable ``.id``.
+    resolved = await _follow_and_dedupe(client, matches, query)
+
+    if len(resolved) > 1:
+        raise AmbiguousGroupError(query, [t for t, _ in resolved])
+    target = resolved[0][1]
+    # Guard mirrors the numeric/@handle path: a migrated-to peer that is
+    # not a group-shaped entity must surface as ``GroupNotFoundError``
+    # rather than leak downstream.
+    if not is_group_entity(target):
+        raise GroupNotFoundError(
+            f"no group matched {query!r} (resolved to a non-group "
+            "entity such as a DM or bot)"
+        )
+    return target
+
+
+async def _follow_and_dedupe(
+    client: Any, matches: list[tuple[str, Any]], query: str
+) -> list[tuple[str, Any]]:
+    """Resolve migrations and collapse duplicates in title matches.
+
+    A migrated zombie and its replacement supergroup can both appear in
+    ``iter_dialogs`` and (when the user's substring happens to span the
+    shared name) both match. Following migrations up front and deduping
+    by post-migration entity id keeps the legitimate single target from
+    being misreported as ambiguous. ``id(obj)`` is the fallback key for
+    test doubles that lack a stable ``.id``.
+    """
     resolved: list[tuple[str, Any]] = []
     seen_ids: set[Any] = set()
     for title, entity in matches:
@@ -177,19 +189,7 @@ async def _resolve_by_title(client: Any, query: str) -> Any:
             continue
         seen_ids.add(key)
         resolved.append((title, target))
-
-    if len(resolved) > 1:
-        raise AmbiguousGroupError(query, [t for t, _ in resolved])
-    target = resolved[0][1]
-    # Guard mirrors the numeric/@handle path: a migrated-to peer that is
-    # not a group-shaped entity must surface as ``GroupNotFoundError``
-    # rather than leak downstream.
-    if not _is_group_entity(target):
-        raise GroupNotFoundError(
-            f"no group matched {query!r} (resolved to a non-group "
-            "entity such as a DM or bot)"
-        )
-    return target
+    return resolved
 
 
 def _dialog_title(dialog: Any) -> str | None:

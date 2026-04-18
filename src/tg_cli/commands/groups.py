@@ -12,7 +12,7 @@ from telethon.tl import types as _tl
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Group
-from ._peer import is_migrated_chat, marked_peer_id
+from ._peer import is_group_entity, is_migrated_chat, marked_peer_id
 
 _TYPE_CHOICES = ("group", "channel", "all")
 
@@ -114,7 +114,7 @@ def _classify(entity: Any) -> str | None:
     broadcast/gigagroup); any other titled entity is a plain ``Chat``
     (small group).
     """
-    if getattr(entity, "title", None) is None:
+    if not is_group_entity(entity):
         return None
     if isinstance(entity, _CHANNEL_TYPES):
         return "supergroup" if entity.megagroup else "channel"

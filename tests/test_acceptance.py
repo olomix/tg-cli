@@ -146,22 +146,25 @@ _MIGRATED_CHANNEL_ID = 881744120
 _MIGRATED_CHANNEL_MARKED_ID = -1_000_000_000_000 - _MIGRATED_CHANNEL_ID
 
 
-def _migrated_chat_entity() -> SimpleNamespace:
-    """Basic ``Chat`` double whose ``migrated_to`` points at a channel."""
-    pointer = SimpleNamespace(
+def _fake_migrated_client() -> MagicMock:
+    """Client whose dialog list carries a migrated zombie + its target.
+
+    ``get_entity`` is driven by ``side_effect``: first call receives the
+    raw ``-<old_chat_id>`` integer (Telethon semantics), second call
+    receives the ``migrated_to`` pointer from the first result, so both
+    sequential lookups behind the migration follow-through are covered.
+    """
+    migrated_pointer = SimpleNamespace(
         channel_id=_MIGRATED_CHANNEL_ID, access_hash=7
     )
-    return SimpleNamespace(
+    migrated = SimpleNamespace(
         id=_MIGRATED_OLD_CHAT_ID,
         title="Legacy Team",
         participants_count=0,
         username=None,
-        migrated_to=pointer,
+        migrated_to=migrated_pointer,
     )
-
-
-def _migrated_target_channel() -> SimpleNamespace:
-    return SimpleNamespace(
+    channel = SimpleNamespace(
         id=_MIGRATED_CHANNEL_ID,
         title="Legacy Team (migrated)",
         megagroup=True,
@@ -170,18 +173,7 @@ def _migrated_target_channel() -> SimpleNamespace:
         participants_count=25,
         migrated_to=None,
     )
-
-
-def _dialog_wrap(entity: SimpleNamespace) -> SimpleNamespace:
-    return SimpleNamespace(
-        entity=entity,
-        id=entity.id,
-        name=getattr(entity, "title", None),
-    )
-
-
-def _post_migration_msg() -> SimpleNamespace:
-    return SimpleNamespace(
+    post_migration_msg = SimpleNamespace(
         id=77,
         message="after migration",
         text="after migration",
@@ -193,17 +185,8 @@ def _post_migration_msg() -> SimpleNamespace:
         reply_to=None,
     )
 
-
-def _fake_migrated_client() -> MagicMock:
-    """Client whose dialog list carries a migrated zombie + its target.
-
-    ``get_entity`` is driven by ``side_effect``: first call receives the
-    raw ``-<old_chat_id>`` integer (Telethon semantics), second call
-    receives the ``migrated_to`` pointer from the first result, so both
-    sequential lookups behind the migration follow-through are covered.
-    """
-    migrated = _migrated_chat_entity()
-    channel = _migrated_target_channel()
+    def _wrap(entity: SimpleNamespace) -> SimpleNamespace:
+        return SimpleNamespace(entity=entity, id=entity.id, name=entity.title)
 
     async def _get_entity(key: Any) -> Any:
         if key == -_MIGRATED_OLD_CHAT_ID:
@@ -218,13 +201,14 @@ def _fake_migrated_client() -> MagicMock:
     client.is_user_authorized = AsyncMock(return_value=True)
     client.get_entity = AsyncMock(side_effect=_get_entity)
     client.iter_dialogs = MagicMock(
-        return_value=_AsyncIter(
-            [_dialog_wrap(migrated), _dialog_wrap(channel)]
-        )
+        return_value=_AsyncIter([_wrap(migrated), _wrap(channel)])
     )
     client.iter_messages = MagicMock(
-        return_value=_AsyncIter([_post_migration_msg()])
+        return_value=_AsyncIter([post_migration_msg])
     )
+    # Stored as attribute so tests that need it (e.g. ``tg thread``'s
+    # root lookup) can reuse the same message object.
+    client._post_migration_msg = post_migration_msg
     return client
 
 
@@ -300,7 +284,7 @@ def test_migrated_chat_redirects_tg_thread() -> None:
     client = _fake_migrated_client()
     # ``tg thread`` calls ``get_messages`` for the root before iterating
     # replies; the shared fake doesn't define it, so patch locally.
-    client.get_messages = AsyncMock(return_value=_post_migration_msg())
+    client.get_messages = AsyncMock(return_value=client._post_migration_msg)
     with patch(
         "tg_cli.commands.thread.make_client", return_value=client
     ):

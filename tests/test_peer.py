@@ -106,7 +106,7 @@ def test_marked_peer_id_rejects_missing_id() -> None:
         marked_peer_id(SimpleNamespace(title="no id"))
 
 
-def testis_migrated_chat_true_when_migrated_to_is_set() -> None:
+def test_is_migrated_chat_true_when_migrated_to_is_set() -> None:
     # Telethon fills ``migrated_to`` with an ``InputChannel`` on a chat
     # that has been upgraded to a supergroup; any truthy value suffices
     # for the predicate.
@@ -115,12 +115,12 @@ def testis_migrated_chat_true_when_migrated_to_is_set() -> None:
     assert is_migrated_chat(chat) is True
 
 
-def testis_migrated_chat_false_when_migrated_to_is_none() -> None:
+def test_is_migrated_chat_false_when_migrated_to_is_none() -> None:
     chat = SimpleNamespace(id=100, title="Live", migrated_to=None)
     assert is_migrated_chat(chat) is False
 
 
-def testis_migrated_chat_false_when_attribute_missing() -> None:
+def test_is_migrated_chat_false_when_attribute_missing() -> None:
     # ``Channel`` / ``ChannelForbidden`` and our test doubles typically
     # don't declare ``migrated_to`` at all — must read as "not migrated".
     channel = SimpleNamespace(id=1, title="Live", megagroup=True)

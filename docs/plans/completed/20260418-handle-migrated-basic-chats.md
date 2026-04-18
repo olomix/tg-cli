@@ -100,25 +100,15 @@ New helper in `_resolve.py`:
 
 ```python
 async def _maybe_follow_migration(client, entity, reference):
-    if not _is_migrated_chat(entity):
+    if not is_migrated_chat(entity):
         return entity
     try:
         return await client.get_entity(entity.migrated_to)
-    except _MIGRATION_FOLLOW_ERRORS as exc:
+    except (ValueError, ChannelInvalidError, ChannelPrivateError) as exc:
         raise GroupNotFoundError(
             f"group {reference!r} was migrated to a supergroup that "
             "could not be resolved (run `tg groups` to find its new id)"
         ) from exc
-```
-
-Where:
-
-```python
-_MIGRATION_FOLLOW_ERRORS = (
-    ValueError,
-    telethon.errors.ChannelInvalidError,
-    telethon.errors.ChannelPrivateError,
-)
 ```
 
 Called from **both** resolver paths:
@@ -175,7 +165,7 @@ Callers that use `marked_peer_id(entity)` (like `messages.py`) automatically emi
 - [x] write failing test: migrated-chat path where the second `get_entity` raises `telethon.errors.ChannelPrivateError` — same `GroupNotFoundError` surfaces
 - [x] write regression test: non-migrated numeric id resolves in exactly one `get_entity` call (no extra lookup)
 - [x] write regression test: `@username` resolving to a live `Channel` is unaffected (no migration follow-up)
-- [x] add `_is_migrated_chat` import and a new `_maybe_follow_migration(client, entity, reference)` async helper in `src/tg_cli/commands/_resolve.py`; define `_MIGRATION_FOLLOW_ERRORS = (ValueError, ChannelInvalidError, ChannelPrivateError)`
+- [x] add `is_migrated_chat` import and a new `_maybe_follow_migration(client, entity, reference)` async helper in `src/tg_cli/commands/_resolve.py`; inline the migration-follow `except` clause as `(ValueError, ChannelInvalidError, ChannelPrivateError)`
 - [x] call `_maybe_follow_migration` from `_get_entity_or_not_found` immediately after the initial `client.get_entity` succeeds, before `_is_group_entity` runs
 - [x] run `uv run pytest tests/test_resolve.py -v` — must pass before task 4
 
