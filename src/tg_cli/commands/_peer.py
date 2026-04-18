@@ -52,7 +52,7 @@ def _looks_like_channel(entity: Any) -> bool:
     )
 
 
-def _is_migrated_chat(entity: Any) -> bool:
+def is_migrated_chat(entity: Any) -> bool:
     """Return True for a basic ``Chat`` that was migrated to a supergroup.
 
     Telethon's ``Chat`` exposes ``migrated_to`` as ``None`` for a live
@@ -61,5 +61,9 @@ def _is_migrated_chat(entity: Any) -> bool:
     ``Channel``/``ChannelForbidden`` never carry this attribute, so a
     missing attribute reads as "not migrated" — safe to call on any
     peer-like object.
+
+    Public (no leading underscore) because this helper is deliberately
+    shared across sibling modules (``commands.groups`` and
+    ``commands._resolve``); mirrors ``marked_peer_id``'s visibility.
     """
     return getattr(entity, "migrated_to", None) is not None

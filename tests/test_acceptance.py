@@ -228,13 +228,9 @@ def _fake_migrated_client() -> MagicMock:
     return client
 
 
-def test_migrated_chat_is_filtered_from_groups_and_redirects_messages() -> None:
-    """End-to-end contract: a migrated basic chat disappears from the
-    ``tg groups`` listing, and its old id transparently redirects to the
-    new supergroup in ``tg messages``. The ``group_id`` on returned
-    messages must be the supergroup's marked ``-100…`` id, NOT the id
-    passed on the command line — this is the JSON-semantics change the
-    plan documents under "JSON semantics change (intentional)"."""
+def test_migrated_chat_filtered_from_groups_listing() -> None:
+    """A migrated basic chat disappears from the ``tg groups`` listing,
+    and the replacement supergroup shows up under its marked ``-100…`` id."""
     client = _fake_migrated_client()
 
     with patch(
@@ -253,10 +249,13 @@ def test_migrated_chat_is_filtered_from_groups_and_redirects_messages() -> None:
     assert _MIGRATED_CHANNEL_MARKED_ID in ids
     assert "Legacy Team (migrated)" in titles
 
-    # Rebuild the client: the previous invocation already exhausted
-    # ``iter_dialogs`` / ``iter_messages`` (single-shot async iters) and
-    # ``get_entity.side_effect`` is a callable so it is fine to reuse,
-    # but a clean client makes the second assertion independent.
+
+def test_migrated_chat_redirects_tg_messages() -> None:
+    """Old basic-chat id passed to ``tg messages`` transparently redirects
+    to the new supergroup. ``group_id`` on returned messages must be the
+    supergroup's marked ``-100…`` id, NOT the id on the command line —
+    this is the JSON-semantics change documented under "JSON semantics
+    change (intentional)" in the plan."""
     client = _fake_migrated_client()
     with patch(
         "tg_cli.commands.messages.make_client", return_value=client
@@ -267,12 +266,50 @@ def test_migrated_chat_is_filtered_from_groups_and_redirects_messages() -> None:
     assert msgs.exit_code == 0, msgs.output
     messages_payload = json.loads(msgs.stdout)
     assert len(messages_payload) == 1
-    assert (
-        messages_payload[0]["group_id"] == _MIGRATED_CHANNEL_MARKED_ID
-    )
+    assert messages_payload[0]["group_id"] == _MIGRATED_CHANNEL_MARKED_ID
     # Sanity: the old id is NEVER echoed back as ``group_id``.
     assert messages_payload[0]["group_id"] != -_MIGRATED_OLD_CHAT_ID
     # ``iter_messages`` must have been called against the resolved
     # supergroup entity, not the zombie chat.
     (entity_arg,), _ = client.iter_messages.call_args
     assert entity_arg.id == _MIGRATED_CHANNEL_ID
+
+
+def test_migrated_chat_redirects_tg_search() -> None:
+    """``tg search`` shares the same resolver as ``tg messages`` but has
+    its own CLI wiring. Verify end-to-end that the old basic-chat id
+    redirects and ``group_id`` reports the supergroup's marked id."""
+    client = _fake_migrated_client()
+    with patch(
+        "tg_cli.commands.search.make_client", return_value=client
+    ):
+        res = CliRunner().invoke(
+            cli.main, ["search", "--", f"-{_MIGRATED_OLD_CHAT_ID}", "after"]
+        )
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.stdout)
+    assert len(payload) == 1
+    assert payload[0]["group_id"] == _MIGRATED_CHANNEL_MARKED_ID
+    (entity_arg,), _ = client.iter_messages.call_args
+    assert entity_arg.id == _MIGRATED_CHANNEL_ID
+
+
+def test_migrated_chat_redirects_tg_thread() -> None:
+    """``tg thread`` also shares the resolver. Root message's ``group_id``
+    must be the supergroup's marked id."""
+    client = _fake_migrated_client()
+    # ``tg thread`` calls ``get_messages`` for the root before iterating
+    # replies; the shared fake doesn't define it, so patch locally.
+    client.get_messages = AsyncMock(return_value=_post_migration_msg())
+    with patch(
+        "tg_cli.commands.thread.make_client", return_value=client
+    ):
+        res = CliRunner().invoke(
+            cli.main, ["thread", "--", f"-{_MIGRATED_OLD_CHAT_ID}", "77"]
+        )
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.stdout)
+    assert payload, "expected at least the root message"
+    assert payload[0]["group_id"] == _MIGRATED_CHANNEL_MARKED_ID
+    (root_entity,), _ = client.get_messages.call_args
+    assert root_entity.id == _MIGRATED_CHANNEL_ID

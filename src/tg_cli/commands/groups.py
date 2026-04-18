@@ -12,7 +12,7 @@ from telethon.tl import types as _tl
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Group
-from ._peer import _is_migrated_chat, marked_peer_id
+from ._peer import is_migrated_chat, marked_peer_id
 
 _TYPE_CHOICES = ("group", "channel", "all")
 
@@ -91,7 +91,7 @@ def _dialog_to_group(dialog: Any) -> Group | None:
     # Migrated basic chats are zombie dialogs: their messages now live
     # in the replacement supergroup (which appears separately in the
     # dialog list). Drop them so the listing only shows live peers.
-    if _is_migrated_chat(entity):
+    if is_migrated_chat(entity):
         return None
     return Group(
         id=marked_peer_id(entity),

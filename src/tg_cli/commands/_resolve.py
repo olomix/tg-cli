@@ -25,7 +25,7 @@ from telethon.errors import (
     UsernameNotOccupiedError,
 )
 
-from tg_cli.commands._peer import _is_migrated_chat
+from tg_cli.commands._peer import is_migrated_chat
 
 
 class GroupResolveError(Exception):
@@ -105,14 +105,17 @@ async def _maybe_follow_migration(
     commands don't silently return an empty history. Returns ``entity``
     unchanged when it is not a migrated chat.
     """
-    if not _is_migrated_chat(entity):
+    if not is_migrated_chat(entity):
         return entity
     try:
         return await client.get_entity(entity.migrated_to)
-    except _MIGRATION_FOLLOW_ERRORS as exc:
-        # ``access_hash`` embedded in ``migrated_to`` may be stale across
-        # sessions; Telethon signals that via ``ChannelInvalidError`` /
-        # ``ChannelPrivateError`` rather than a plain ``ValueError``.
+    # ``access_hash`` embedded in ``migrated_to`` may be stale across
+    # sessions; Telethon signals that via ``ChannelInvalidError`` /
+    # ``ChannelPrivateError`` rather than a plain ``ValueError``. Any
+    # other exception (e.g. ``RuntimeError``, transport errors) is
+    # intentionally left to propagate — only staleness/access failures
+    # are mapped to a user-actionable ``GroupNotFoundError``.
+    except (ValueError, ChannelInvalidError, ChannelPrivateError) as exc:
         raise GroupNotFoundError(
             f"group {reference!r} was migrated to a supergroup that "
             "could not be resolved (run `tg groups` to find its new id)"
@@ -136,13 +139,6 @@ _ENTITY_LOOKUP_ERRORS = (
 )
 
 
-_MIGRATION_FOLLOW_ERRORS = (
-    ValueError,
-    ChannelInvalidError,
-    ChannelPrivateError,
-)
-
-
 def _looks_like_int(text: str) -> bool:
     if text.startswith(("+", "-")):
         return text[1:].isdigit()
@@ -163,9 +159,37 @@ async def _resolve_by_title(client: Any, query: str) -> Any:
         raise GroupNotFoundError(
             f"no group matched {query!r} (searched all dialogs)"
         )
-    if len(matches) > 1:
-        raise AmbiguousGroupError(query, [t for t, _ in matches])
-    return await _maybe_follow_migration(client, matches[0][1], reference=query)
+
+    # A migrated zombie and its replacement supergroup can both appear
+    # in ``iter_dialogs`` and (when the user's substring happens to span
+    # the shared name) both match. Follow migrations up front and dedupe
+    # by post-migration entity id so the legitimate single target isn't
+    # misreported as ambiguous. ``id(obj)`` is the fallback key for test
+    # doubles that lack a stable ``.id``.
+    resolved: list[tuple[str, Any]] = []
+    seen_ids: set[Any] = set()
+    for title, entity in matches:
+        target = await _maybe_follow_migration(client, entity, reference=query)
+        key = getattr(target, "id", None)
+        if key is None:
+            key = id(target)
+        if key in seen_ids:
+            continue
+        seen_ids.add(key)
+        resolved.append((title, target))
+
+    if len(resolved) > 1:
+        raise AmbiguousGroupError(query, [t for t, _ in resolved])
+    target = resolved[0][1]
+    # Guard mirrors the numeric/@handle path: a migrated-to peer that is
+    # not a group-shaped entity must surface as ``GroupNotFoundError``
+    # rather than leak downstream.
+    if not _is_group_entity(target):
+        raise GroupNotFoundError(
+            f"no group matched {query!r} (resolved to a non-group "
+            "entity such as a DM or bot)"
+        )
+    return target
 
 
 def _dialog_title(dialog: Any) -> str | None:

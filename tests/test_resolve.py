@@ -189,10 +189,9 @@ def test_resolve_numeric_id_value_error_becomes_group_not_found() -> None:
 
 
 def test_resolve_username_not_occupied_becomes_group_not_found() -> None:
-    # Telethon RPC errors need positional ``request`` arg in some versions;
-    # instantiate via ``__new__`` to avoid version-specific constructor drift.
-    exc = UsernameNotOccupiedError.__new__(UsernameNotOccupiedError)
-    Exception.__init__(exc, "USERNAME_NOT_OCCUPIED")
+    # Telethon RPC subclasses take a ``request`` argument; pass a dummy
+    # so the real ``__init__`` runs and we catch any future signature drift.
+    exc = UsernameNotOccupiedError(request=SimpleNamespace())
     client = MagicMock()
     client.get_entity = AsyncMock(side_effect=exc)
     with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
@@ -201,8 +200,7 @@ def test_resolve_username_not_occupied_becomes_group_not_found() -> None:
 
 
 def test_resolve_username_invalid_becomes_group_not_found() -> None:
-    exc = UsernameInvalidError.__new__(UsernameInvalidError)
-    Exception.__init__(exc, "USERNAME_INVALID")
+    exc = UsernameInvalidError(request=SimpleNamespace())
     client = MagicMock()
     client.get_entity = AsyncMock(side_effect=exc)
     with pytest.raises(_resolve.GroupNotFoundError):
@@ -220,7 +218,12 @@ def test_resolve_skips_dialogs_with_no_title_or_name() -> None:
 
 
 def _migrated_chat(title: str = "Old Group") -> SimpleNamespace:
-    """Basic ``Chat`` double whose ``migrated_to`` points at a channel."""
+    """Basic ``Chat`` double whose ``migrated_to`` points at a channel.
+
+    ``id=584241293`` is synthetic — chosen to resemble a real basic-chat
+    id (9-digit bare positive int, marked form ``-584241293``) without
+    colliding with other fixture ids in the suite.
+    """
     pointer = SimpleNamespace(channel_id=999, access_hash=42)
     return SimpleNamespace(id=584241293, title=title, migrated_to=pointer)
 
@@ -247,8 +250,7 @@ def test_resolve_migration_follow_value_error_raises_group_not_found() -> None:
 
 def test_resolve_migration_follow_channel_invalid_raises_not_found() -> None:
     migrated = _migrated_chat()
-    exc = ChannelInvalidError.__new__(ChannelInvalidError)
-    Exception.__init__(exc, "CHANNEL_INVALID")
+    exc = ChannelInvalidError(request=SimpleNamespace())
     client = _client(get_entity=[migrated, exc])
     with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
         _run(_resolve.resolve(client, "-584241293"))
@@ -257,12 +259,39 @@ def test_resolve_migration_follow_channel_invalid_raises_not_found() -> None:
 
 def test_resolve_migration_follow_channel_private_raises_not_found() -> None:
     migrated = _migrated_chat()
-    exc = ChannelPrivateError.__new__(ChannelPrivateError)
-    Exception.__init__(exc, "CHANNEL_PRIVATE")
+    exc = ChannelPrivateError(request=SimpleNamespace())
     client = _client(get_entity=[migrated, exc])
     with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
         _run(_resolve.resolve(client, "-584241293"))
     assert "migrated" in str(excinfo.value)
+
+
+def test_resolve_migration_follow_unrelated_exception_propagates() -> None:
+    # ``_maybe_follow_migration`` catches only the documented staleness /
+    # access-check errors. An unrelated exception (connection loss, bug,
+    # etc.) must bubble up unchanged — wrapping it in
+    # ``GroupNotFoundError`` would mask real failures.
+    migrated = _migrated_chat()
+    unrelated = RuntimeError("transport died")
+    client = _client(get_entity=[migrated, unrelated])
+    with pytest.raises(RuntimeError) as excinfo:
+        _run(_resolve.resolve(client, "-584241293"))
+    assert str(excinfo.value) == "transport died"
+
+
+def test_resolve_migration_follow_to_non_group_entity_raises_not_found() -> (
+    None
+):
+    # If Telegram's migrated_to pointer ever resolves to something
+    # title-less (a corrupt DB entry, a user peer), the numeric/@handle
+    # path must surface ``GroupNotFoundError`` rather than hand a DM/bot
+    # entity to downstream commands.
+    migrated = _migrated_chat()
+    not_a_group = SimpleNamespace(id=999, first_name="Alice")
+    client = _client(get_entity=[migrated, not_a_group])
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "-584241293"))
+    assert "non-group entity" in str(excinfo.value)
 
 
 def test_resolve_non_migrated_numeric_id_does_not_double_lookup() -> None:
@@ -304,14 +333,71 @@ def test_resolve_title_substring_migration_follow_channel_invalid() -> None:
     dialog = SimpleNamespace(
         entity=migrated, id=migrated.id, name=migrated.title
     )
-    exc = ChannelInvalidError.__new__(ChannelInvalidError)
-    Exception.__init__(exc, "CHANNEL_INVALID")
+    exc = ChannelInvalidError(request=SimpleNamespace())
     client = _client([dialog], get_entity=exc)
     with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
         _run(_resolve.resolve(client, "old group name"))
     assert "migrated" in str(excinfo.value)
     # Error message names the user's query, not some internal id.
     assert "old group name" in str(excinfo.value)
+
+
+def test_resolve_title_substring_migration_follow_to_non_group_raises() -> None:
+    # Title path must mirror the numeric/@handle guard: if the migrated
+    # target is not a group-shaped entity, surface ``GroupNotFoundError``
+    # rather than return a user/bot to downstream commands.
+    migrated = _migrated_chat(title="Old Group Name")
+    dialog = SimpleNamespace(
+        entity=migrated, id=migrated.id, name=migrated.title
+    )
+    not_a_group = SimpleNamespace(id=999, first_name="Alice")
+    client = _client([dialog], get_entity=not_a_group)
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "old group name"))
+    assert "non-group entity" in str(excinfo.value)
+
+
+def test_resolve_title_substring_dedupes_zombie_and_migration_target() -> None:
+    # If the user's substring matches both the migrated zombie *and* its
+    # replacement supergroup (e.g. both still carry the shared name in
+    # the dialog list), ``_resolve_by_title`` must follow the migration
+    # and dedupe by post-migration id — surfacing the single legitimate
+    # target instead of raising ``AmbiguousGroupError``.
+    channel = SimpleNamespace(
+        id=999, title="Team Name", megagroup=True, migrated_to=None
+    )
+    migrated = SimpleNamespace(
+        id=584241293,
+        title="Team Name",
+        migrated_to=SimpleNamespace(channel_id=999, access_hash=42),
+    )
+    dialogs = [
+        SimpleNamespace(entity=migrated, id=migrated.id, name=migrated.title),
+        SimpleNamespace(entity=channel, id=channel.id, name=channel.title),
+    ]
+    # Only the migrated entry triggers a ``get_entity`` call (for the
+    # follow-through); the live channel is returned as-is.
+    client = _client(dialogs, get_entity=channel)
+    result = _run(_resolve.resolve(client, "team name"))
+    assert result is channel
+    client.get_entity.assert_awaited_once_with(migrated.migrated_to)
+
+
+def test_resolve_title_substring_still_ambiguous_across_distinct_groups() -> (
+    None
+):
+    # Regression guard for the dedupe logic: two genuinely distinct
+    # groups must still raise ``AmbiguousGroupError``.
+    a = SimpleNamespace(id=1, title="Dev Frontend", migrated_to=None)
+    b = SimpleNamespace(id=2, title="Dev Backend", migrated_to=None)
+    dialogs = [
+        SimpleNamespace(entity=a, id=a.id, name=a.title),
+        SimpleNamespace(entity=b, id=b.id, name=b.title),
+    ]
+    client = _client(dialogs)
+    with pytest.raises(_resolve.AmbiguousGroupError) as excinfo:
+        _run(_resolve.resolve(client, "dev"))
+    assert excinfo.value.matches == ["Dev Frontend", "Dev Backend"]
 
 
 def test_resolve_title_substring_live_channel_no_get_entity_call() -> None:
