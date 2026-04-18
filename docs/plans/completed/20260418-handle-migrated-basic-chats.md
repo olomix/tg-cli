@@ -217,10 +217,10 @@ Callers that use `marked_peer_id(entity)` (like `messages.py`) automatically emi
 - Modify: `README.md`
 - Modify: `skill/SKILL.md` (if it documents dialog listings or id usage)
 
-- [ ] in `README.md`'s `tg messages` section (not just troubleshooting), add a short paragraph explaining that migrated basic chats are transparently redirected to their new supergroup, **and that the `group_id` field on returned messages reflects the resolved supergroup's `-100…` id rather than the id passed on the command line**
-- [ ] add a matching paragraph to `skill/SKILL.md` wherever it documents `group_id` / dialog listings so the skill model does not cache a stale id mapping
-- [ ] mention that the follow-through also fires for title-substring lookups (old zombie title still works)
-- [ ] move this plan to `docs/plans/completed/20260418-handle-migrated-basic-chats.md`
+- [x] in `README.md`'s `tg messages` section (not just troubleshooting), add a short paragraph explaining that migrated basic chats are transparently redirected to their new supergroup, **and that the `group_id` field on returned messages reflects the resolved supergroup's `-100…` id rather than the id passed on the command line**
+- [x] add a matching paragraph to `skill/SKILL.md` wherever it documents `group_id` / dialog listings so the skill model does not cache a stale id mapping
+- [x] mention that the follow-through also fires for title-substring lookups (old zombie title still works)
+- [x] move this plan to `docs/plans/completed/20260418-handle-migrated-basic-chats.md`
 
 ## Post-Completion
 

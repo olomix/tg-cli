@@ -173,6 +173,15 @@ Keep `--limit` bounded (default 100) to avoid rate limits. If a
 - Always parse output with `json.loads`; never regex the prose.
 - Prefer numeric `id` (from `tg groups`) over title when scripting
   multiple calls — it avoids the title-substring ambiguity error.
+- Migrated basic chats are transparently redirected. If the user (or
+  older notes) references a legacy basic-chat id, `@username`, or old
+  title substring, `tg messages` / `tg search` / `tg thread` resolve
+  to the supergroup it was migrated to. The `group_id` on returned
+  messages is the resolved supergroup's `-100…` id, **not** the id
+  passed on the command line — do not cache an id-to-group_id mapping
+  from the request side; always read `group_id` off the response.
+  Migrated zombies are also filtered from `tg groups`, so a fresh
+  listing always shows the supergroup id.
 - The session file grants full account access; never print it, copy
   it, or include it in any tool output.
 - If `tg` is not installed, tell the user to run

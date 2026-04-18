@@ -98,6 +98,14 @@ substring of the title (errors on ambiguous match).
 > the id after a `--` separator, or use the `@username` / title form
 > instead. The same applies to `tg search` and `tg thread`.
 
+> **Migrated basic chats.** Legacy basic-chat ids (and old title
+> substrings) are transparently redirected to the supergroup they were
+> migrated to, so an id you copy-pasted from an older listing keeps
+> working. This applies equally to numeric ids, `@username`, and title
+> substrings, and covers `tg messages`, `tg search`, and `tg thread`.
+> The `group_id` field on returned messages reflects the resolved
+> supergroup's `-100…` id, not the id you passed on the command line.
+
 `TIME` accepts `24h`, `7d`, `2026-04-15`, or `2026-04-15T10:00` (UTC).
 
 ### `tg search <group> <query> [--since TIME] [--limit N] [--pretty]`
