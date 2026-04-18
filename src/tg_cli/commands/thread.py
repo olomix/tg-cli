@@ -52,9 +52,16 @@ async def _collect_thread(
         entity = await resolve(client, group)
         group_id = marked_peer_id(entity)
 
+        # Telethon signals bad/nonexistent message ids via
+        # ``MsgIdInvalidError`` and unreachable peers via
+        # ``PeerIdInvalidError``; both must surface as the documented
+        # ``MessageNotFoundError`` rather than leak a generic RPC error.
         try:
             root_raw = await client.get_messages(entity, ids=message_id)
-        except telethon_errors.PeerIdInvalidError as exc:
+        except (
+            telethon_errors.MsgIdInvalidError,
+            telethon_errors.PeerIdInvalidError,
+        ) as exc:
             raise MessageNotFoundError(
                 f"message {message_id} not found in {group!r}"
             ) from exc

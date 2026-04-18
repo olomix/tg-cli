@@ -43,6 +43,49 @@ def test_load_config_malformed_toml(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
+def test_load_config_unreadable_file_surfaces_config_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``path.exists()`` is a TOCTOU hint; a realistic permission error
+    (or a file deleted between check and open) must surface as a
+    structured ``ConfigError`` so the CLI's JSON-error contract holds,
+    not as a raw ``OSError`` traceback."""
+    path = tmp_path / "config.toml"
+    _write(path, 'api_id = 1\napi_hash = "x"\n')
+
+    real_open = Path.open
+
+    def _raising_open(self: Path, *args: object, **kwargs: object) -> object:
+        if self == path:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "open", _raising_open)
+    with pytest.raises(ConfigError, match="Could not read"):
+        load_config(tmp_path)
+
+
+def test_load_config_disappeared_file_surfaces_config_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the file disappears between ``exists()`` and ``open()`` (race
+    with a deploy/rotation), surface ``ConfigError``, not
+    ``FileNotFoundError``."""
+    path = tmp_path / "config.toml"
+    _write(path, 'api_id = 1\napi_hash = "x"\n')
+
+    real_open = Path.open
+
+    def _raising_open(self: Path, *args: object, **kwargs: object) -> object:
+        if self == path:
+            raise FileNotFoundError(2, "No such file", str(self))
+        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "open", _raising_open)
+    with pytest.raises(ConfigError, match="Could not read"):
+        load_config(tmp_path)
+
+
 def test_load_config_missing_api_id(tmp_path: Path) -> None:
     _write(tmp_path / "config.toml", 'api_hash = "x"\n')
     with pytest.raises(ConfigError, match="Missing 'api_id'"):

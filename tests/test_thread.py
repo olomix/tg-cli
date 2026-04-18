@@ -307,6 +307,32 @@ def test_thread_converts_peer_id_invalid_on_get_messages() -> None:
     assert "not found" in result.stderr.lower()
 
 
+def test_thread_converts_msg_id_invalid_on_get_messages() -> None:
+    """Telethon raises ``MsgIdInvalidError`` (not just
+    ``PeerIdInvalidError``) on ``get_messages`` for nonexistent/invalid
+    message ids; it must also surface as ``MessageNotFoundError`` JSON."""
+    entity = _entity(1)
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.disconnect = AsyncMock()
+    client.is_user_authorized = AsyncMock(return_value=True)
+    client.get_entity = AsyncMock(return_value=entity)
+    client.iter_dialogs = MagicMock(return_value=_AsyncIter([]))
+    client.get_messages = AsyncMock(
+        side_effect=MsgIdInvalidError(request=None)
+    )
+    client.iter_messages = MagicMock(return_value=_AsyncIter([]))
+    with patch(
+        "tg_cli.commands.thread.make_client", return_value=client
+    ):
+        result = CliRunner().invoke(cli.main, ["thread", "1", "5"])
+    assert result.exit_code != 0
+    assert '"type": "MessageNotFoundError"' in result.stderr
+    assert "not found" in result.stderr.lower()
+    client.iter_messages.assert_not_called()
+    client.disconnect.assert_awaited_once()
+
+
 def test_thread_converts_msg_id_invalid_on_iter_messages() -> None:
     """When ``reply_to`` targets a chat without discussion threads,
     Telethon raises ``MsgIdInvalidError``; must surface as

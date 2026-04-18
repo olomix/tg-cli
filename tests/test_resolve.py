@@ -400,6 +400,27 @@ def test_resolve_title_substring_still_ambiguous_across_distinct_groups() -> (
     assert excinfo.value.matches == ["Dev Frontend", "Dev Backend"]
 
 
+def test_resolve_title_substring_bare_id_collision_across_peer_types() -> None:
+    # Telegram only guarantees id uniqueness within a peer type: a small
+    # ``Chat(id=N)`` and a ``Channel(id=N)`` are different peers whose
+    # marked ids differ (``-N`` vs ``-1e12-N``). The dedupe key must be
+    # the marked peer id, otherwise one match is silently dropped and
+    # what should raise ``AmbiguousGroupError`` resolves to the wrong
+    # entity.
+    chat = SimpleNamespace(id=100, title="Shared Name", migrated_to=None)
+    channel = SimpleNamespace(
+        id=100, title="Shared Name Channel", megagroup=True, migrated_to=None
+    )
+    dialogs = [
+        SimpleNamespace(entity=chat, id=chat.id, name=chat.title),
+        SimpleNamespace(entity=channel, id=channel.id, name=channel.title),
+    ]
+    client = _client(dialogs)
+    with pytest.raises(_resolve.AmbiguousGroupError) as excinfo:
+        _run(_resolve.resolve(client, "shared"))
+    assert excinfo.value.matches == ["Shared Name", "Shared Name Channel"]
+
+
 def test_resolve_title_substring_live_channel_no_get_entity_call() -> None:
     # Regression guard: the existing title-substring path must not gain a
     # redundant ``get_entity`` lookup for non-migrated matches.

@@ -25,7 +25,7 @@ from telethon.errors import (
     UsernameNotOccupiedError,
 )
 
-from ._peer import is_group_entity, is_migrated_chat
+from ._peer import is_group_entity, is_migrated_chat, marked_peer_id
 
 
 class GroupResolveError(Exception):
@@ -175,15 +175,20 @@ async def _follow_and_dedupe(
     ``iter_dialogs`` and (when the user's substring happens to span the
     shared name) both match. Following migrations up front and deduping
     by post-migration entity id keeps the legitimate single target from
-    being misreported as ambiguous. ``id(obj)`` is the fallback key for
-    test doubles that lack a stable ``.id``.
+    being misreported as ambiguous. The key is the *marked* peer id, not
+    the bare ``.id`` — Telegram only guarantees id uniqueness within a
+    peer type, so a ``Chat(id=N)`` and a ``Channel(id=N)`` are genuinely
+    distinct peers and must not collapse to the same dedupe bucket.
+    ``id(obj)`` is the fallback key for test doubles whose shape makes
+    ``marked_peer_id`` raise (e.g. no ``.id`` attribute at all).
     """
     resolved: list[tuple[str, Any]] = []
     seen_ids: set[Any] = set()
     for title, entity in matches:
         target = await _maybe_follow_migration(client, entity, reference=query)
-        key = getattr(target, "id", None)
-        if key is None:
+        try:
+            key: Any = marked_peer_id(target)
+        except (AttributeError, TypeError, ValueError):
             key = id(target)
         if key in seen_ids:
             continue
