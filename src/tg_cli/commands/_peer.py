@@ -50,3 +50,16 @@ def _looks_like_channel(entity: Any) -> bool:
         or getattr(entity, "broadcast", False)
         or getattr(entity, "gigagroup", False)
     )
+
+
+def _is_migrated_chat(entity: Any) -> bool:
+    """Return True for a basic ``Chat`` that was migrated to a supergroup.
+
+    Telethon's ``Chat`` exposes ``migrated_to`` as ``None`` for a live
+    basic chat and as an ``InputChannel`` pointing at the replacement
+    supergroup once migration has happened. ``ChatForbidden`` and
+    ``Channel``/``ChannelForbidden`` never carry this attribute, so a
+    missing attribute reads as "not migrated" — safe to call on any
+    peer-like object.
+    """
+    return getattr(entity, "migrated_to", None) is not None

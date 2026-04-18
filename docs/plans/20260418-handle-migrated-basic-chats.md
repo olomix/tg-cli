@@ -141,12 +141,12 @@ Callers that use `marked_peer_id(entity)` (like `messages.py`) automatically emi
 - Modify: `src/tg_cli/commands/_peer.py`
 - Modify: `tests/test_peer.py`
 
-- [ ] write failing unit tests in `tests/test_peer.py` for `_is_migrated_chat`:
+- [x] write failing unit tests in `tests/test_peer.py` for `_is_migrated_chat`:
       - returns `True` when entity has `migrated_to` set to a truthy value
       - returns `False` when `migrated_to` is `None`
       - returns `False` when `migrated_to` attribute is missing (e.g. `Channel`, `ChatForbidden` double)
-- [ ] add `_is_migrated_chat(entity) -> bool` helper in `src/tg_cli/commands/_peer.py` using `getattr(..., "migrated_to", None) is not None`
-- [ ] run `uv run pytest tests/test_peer.py -v` — must pass before task 2
+- [x] add `_is_migrated_chat(entity) -> bool` helper in `src/tg_cli/commands/_peer.py` using `getattr(..., "migrated_to", None) is not None`
+- [x] run `uv run pytest tests/test_peer.py -v` — must pass before task 2
 
 ### Task 2: Filter migrated chats from `tg groups`
 

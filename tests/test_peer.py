@@ -8,7 +8,7 @@ import pytest
 from telethon.tl import types
 from telethon.utils import get_peer_id
 
-from tg_cli.commands._peer import marked_peer_id
+from tg_cli.commands._peer import _is_migrated_chat, marked_peer_id
 
 
 def test_marked_peer_id_for_small_chat() -> None:
@@ -104,3 +104,26 @@ def test_marked_peer_id_for_chat_forbidden() -> None:
 def test_marked_peer_id_rejects_missing_id() -> None:
     with pytest.raises(AttributeError):
         marked_peer_id(SimpleNamespace(title="no id"))
+
+
+def test_is_migrated_chat_true_when_migrated_to_is_set() -> None:
+    # Telethon fills ``migrated_to`` with an ``InputChannel`` on a chat
+    # that has been upgraded to a supergroup; any truthy value suffices
+    # for the predicate.
+    pointer = SimpleNamespace(channel_id=1234567890, access_hash=42)
+    chat = SimpleNamespace(id=100, title="Old", migrated_to=pointer)
+    assert _is_migrated_chat(chat) is True
+
+
+def test_is_migrated_chat_false_when_migrated_to_is_none() -> None:
+    chat = SimpleNamespace(id=100, title="Live", migrated_to=None)
+    assert _is_migrated_chat(chat) is False
+
+
+def test_is_migrated_chat_false_when_attribute_missing() -> None:
+    # ``Channel`` / ``ChannelForbidden`` and our test doubles typically
+    # don't declare ``migrated_to`` at all — must read as "not migrated".
+    channel = SimpleNamespace(id=1, title="Live", megagroup=True)
+    assert _is_migrated_chat(channel) is False
+    forbidden = types.ChatForbidden(id=200, title="Banned chat")
+    assert _is_migrated_chat(forbidden) is False
