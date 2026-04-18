@@ -421,6 +421,73 @@ def test_resolve_title_substring_bare_id_collision_across_peer_types() -> None:
     assert excinfo.value.matches == ["Shared Name", "Shared Name Channel"]
 
 
+def test_resolve_title_substring_stale_zombie_does_not_hide_live_sibling() -> (
+    None
+):
+    # Per-match follow-through failures must NOT unwind the whole title
+    # resolution: if a stale zombie (first in ``iter_dialogs``) can't be
+    # followed, a later live supergroup that also matches the substring
+    # must still resolve. Otherwise ``tg messages "team"`` fails even
+    # though the live group is right there in the dialog list.
+    live = SimpleNamespace(
+        id=999, title="Team Channel", megagroup=True, migrated_to=None
+    )
+    zombie = SimpleNamespace(
+        id=584241293,
+        title="Team Legacy",
+        migrated_to=SimpleNamespace(channel_id=999, access_hash=42),
+    )
+    dialogs = [
+        SimpleNamespace(entity=zombie, id=zombie.id, name=zombie.title),
+        SimpleNamespace(entity=live, id=live.id, name=live.title),
+    ]
+    # The follow-through for the zombie fails (stale access hash); the
+    # live channel is returned as-is with no lookup needed.
+    client = _client(
+        dialogs,
+        get_entity=ChannelInvalidError(request=SimpleNamespace()),
+    )
+    result = _run(_resolve.resolve(client, "team"))
+    assert result is live
+
+
+def test_resolve_title_substring_only_stale_zombies_raises_with_hint() -> None:
+    # When *every* title match is a zombie whose follow-through fails,
+    # we must surface ``GroupNotFoundError`` with a message pointing at
+    # the migration failure — silently reporting "no group matched" as
+    # if the substring had zero hits would hide the real problem.
+    zombie_a = SimpleNamespace(
+        id=111,
+        title="Team Alpha Legacy",
+        migrated_to=SimpleNamespace(channel_id=1001, access_hash=1),
+    )
+    zombie_b = SimpleNamespace(
+        id=222,
+        title="Team Beta Legacy",
+        migrated_to=SimpleNamespace(channel_id=1002, access_hash=2),
+    )
+    dialogs = [
+        SimpleNamespace(
+            entity=zombie_a, id=zombie_a.id, name=zombie_a.title
+        ),
+        SimpleNamespace(
+            entity=zombie_b, id=zombie_b.id, name=zombie_b.title
+        ),
+    ]
+    client = _client(
+        dialogs,
+        get_entity=[
+            ChannelInvalidError(request=SimpleNamespace()),
+            ChannelInvalidError(request=SimpleNamespace()),
+        ],
+    )
+    with pytest.raises(_resolve.GroupNotFoundError) as excinfo:
+        _run(_resolve.resolve(client, "team"))
+    msg = str(excinfo.value)
+    assert "migrated" in msg
+    assert "'team'" in msg
+
+
 def test_resolve_title_substring_live_channel_no_get_entity_call() -> None:
     # Regression guard: the existing title-substring path must not gain a
     # redundant ``get_entity`` lookup for non-migrated matches.

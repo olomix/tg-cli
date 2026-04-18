@@ -46,10 +46,11 @@ def test_load_config_malformed_toml(tmp_path: Path) -> None:
 def test_load_config_unreadable_file_surfaces_config_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``path.exists()`` is a TOCTOU hint; a realistic permission error
-    (or a file deleted between check and open) must surface as a
-    structured ``ConfigError`` so the CLI's JSON-error contract holds,
-    not as a raw ``OSError`` traceback."""
+    """A realistic permission error on ``config.toml`` must surface as a
+    ``ConfigError`` with the "Could not read" message — distinct from the
+    "Missing config" setup hint — so the user knows to fix perms rather
+    than re-run setup. Mocked open() portably simulates chmod 000 across
+    OSes (real chmod is moot when the test runs as root, e.g. in CI)."""
     path = tmp_path / "config.toml"
     _write(path, 'api_id = 1\napi_hash = "x"\n')
 
@@ -65,12 +66,42 @@ def test_load_config_unreadable_file_surfaces_config_error(
         load_config(tmp_path)
 
 
-def test_load_config_disappeared_file_surfaces_config_error(
+def test_load_config_permission_error_not_reported_as_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard for the ``path.exists()`` bypass: when the file
+    (or an ancestor directory) is unreadable, ``exists()`` historically
+    returns ``False`` and the old guard mistakenly surfaced the
+    "not configured" setup hint. The open-then-handle flow must route
+    ``PermissionError`` to "Could not read" and must NOT mention the
+    setup URL/"tg login" cues that belong on the true-missing path."""
+    path = tmp_path / "config.toml"
+    _write(path, 'api_id = 1\napi_hash = "x"\n')
+
+    real_open = Path.open
+
+    def _raising_open(self: Path, *args: object, **kwargs: object) -> object:
+        if self == path:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "open", _raising_open)
+    with pytest.raises(ConfigError) as exc:
+        load_config(tmp_path)
+    msg = str(exc.value)
+    assert "Could not read" in msg
+    assert "my.telegram.org" not in msg
+    assert "tg login" not in msg
+
+
+def test_load_config_disappeared_file_surfaces_missing_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """If the file disappears between ``exists()`` and ``open()`` (race
-    with a deploy/rotation), surface ``ConfigError``, not
-    ``FileNotFoundError``."""
+    with a deploy/rotation) — or was never there — the setup hint is the
+    right response: ``FileNotFoundError`` from ``open()`` is
+    indistinguishable from a truly absent file, so both route through
+    the same "not configured" message."""
     path = tmp_path / "config.toml"
     _write(path, 'api_id = 1\napi_hash = "x"\n')
 
@@ -82,8 +113,9 @@ def test_load_config_disappeared_file_surfaces_config_error(
         return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(Path, "open", _raising_open)
-    with pytest.raises(ConfigError, match="Could not read"):
+    with pytest.raises(ConfigError) as exc:
         load_config(tmp_path)
+    assert "my.telegram.org" in str(exc.value)
 
 
 def test_load_config_missing_api_id(tmp_path: Path) -> None:

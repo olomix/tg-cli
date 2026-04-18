@@ -75,21 +75,25 @@ def load_config(config_dir: Path | None = None) -> Config:
     """
     directory = Path(config_dir) if config_dir else get_config_dir()
     path = directory / CONFIG_FILENAME
-    if not path.exists():
-        raise ConfigError(SETUP_INSTRUCTIONS.format(path=path))
-    # ``path.exists()`` above is a hint, not a guarantee: the file may
-    # disappear or flip to unreadable between the check and the open
-    # (rotated by a deploy script, mispermissioned on a shared host,
-    # etc.). Catch ``OSError`` — parent of ``FileNotFoundError`` and
-    # ``PermissionError`` — so those realistic paths surface as a
-    # structured ``ConfigError`` and the CLI's JSON-error contract holds.
+    # Open-then-handle rather than ``path.exists()``-then-open: the
+    # stat-based check swallows ``PermissionError`` on the file or its
+    # parents and reports the file as absent, which would misclassify
+    # an unreadable config as "not configured" and send the user down
+    # the setup path instead of a perms fix. Splitting the open errors
+    # lets ``FileNotFoundError`` keep the setup hint while every other
+    # ``OSError`` (permissions, EIO, etc.) surfaces verbatim so the
+    # CLI's JSON-error contract holds.
     try:
-        with path.open("rb") as f:
+        fh = path.open("rb")
+    except FileNotFoundError:
+        raise ConfigError(SETUP_INSTRUCTIONS.format(path=path)) from None
+    except OSError as e:
+        raise ConfigError(f"Could not read {path}: {e}") from e
+    try:
+        with fh as f:
             data = tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"Malformed TOML in {path}: {e}") from e
-    except OSError as e:
-        raise ConfigError(f"Could not read {path}: {e}") from e
 
     # The config file holds ``api_hash`` — a long-lived Telegram secret.
     # Tighten perms to 0o600 best-effort each load so a stale 0o644 from

@@ -181,11 +181,26 @@ async def _follow_and_dedupe(
     distinct peers and must not collapse to the same dedupe bucket.
     ``id(obj)`` is the fallback key for test doubles whose shape makes
     ``marked_peer_id`` raise (e.g. no ``.id`` attribute at all).
+
+    ``GroupNotFoundError`` raised by ``_maybe_follow_migration`` (stale
+    ``migrated_to.access_hash``) is swallowed PER MATCH: we must not let
+    one zombie with a broken pointer hide a live supergroup that matches
+    the same query. Only when *every* match fails to follow do we
+    surface an error — and its message names the migration failure so
+    the user understands why an otherwise-matching substring returned
+    nothing.
     """
     resolved: list[tuple[str, Any]] = []
     seen_ids: set[Any] = set()
+    follow_failures = 0
     for title, entity in matches:
-        target = await _maybe_follow_migration(client, entity, reference=query)
+        try:
+            target = await _maybe_follow_migration(
+                client, entity, reference=query
+            )
+        except GroupNotFoundError:
+            follow_failures += 1
+            continue
         try:
             key: Any = marked_peer_id(target)
         except (AttributeError, TypeError, ValueError):
@@ -194,6 +209,14 @@ async def _follow_and_dedupe(
             continue
         seen_ids.add(key)
         resolved.append((title, target))
+
+    if not resolved and follow_failures:
+        raise GroupNotFoundError(
+            f"no group matched {query!r}: all {follow_failures} title "
+            "match(es) were migrated basic chats whose replacement "
+            "supergroup could not be resolved (run `tg groups` to find "
+            "the new id)"
+        )
     return resolved
 
 
