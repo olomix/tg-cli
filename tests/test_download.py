@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from click.testing import CliRunner
 from telethon.client.downloads import DownloadMethods
-from telethon.errors import RPCError
+from telethon.errors import FloodWaitError, RPCError
 from telethon.tl import types
 
 from tg_cli import cli
@@ -774,6 +774,98 @@ def test_download_that_cannot_create_its_temporary_file_is_a_download_error(
     assert "message 5" in payload["error"]
     client.download_media.assert_not_called()
     assert _names(tmp_path) == []
+
+
+def test_download_that_cannot_delete_an_oversize_file_is_a_download_error(
+    tmp_path: Path,
+) -> None:
+    # The directory turns read-only once the file is written.
+    async def download_media(message: Any, *, file: str, thumb: Any) -> str:
+        Path(file).write_bytes(b"p" * 2001)
+        tmp_path.chmod(0o500)
+        return file
+
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    client.download_media = AsyncMock(side_effect=download_media)
+    try:
+        result = _invoke(
+            client, "--dir", str(tmp_path), "--max-bytes", "2000", "1", "5"
+        )
+    finally:
+        tmp_path.chmod(0o700)
+    payload = _error(result)
+    assert payload["type"] == "DownloadError"
+    assert "message 5" in payload["error"]
+    [leftover] = _names(tmp_path)
+    assert leftover in payload["error"]
+    client.disconnect.assert_awaited_once()
+
+
+def test_download_that_cannot_delete_its_temporary_file_is_a_download_error(
+    tmp_path: Path,
+) -> None:
+    # Telethon writes under another name; the empty temporary file stays.
+    async def download_media(message: Any, *, file: str, thumb: Any) -> str:
+        renamed = file[: -len(".jpg")] + " (1).jpg"
+        Path(renamed).write_bytes(b"photo")
+        return renamed
+
+    def unlink(path: str) -> None:
+        if not os.path.exists(path):
+            raise FileNotFoundError(errno.ENOENT, "No such file", path)
+        raise PermissionError(errno.EACCES, "Permission denied", path)
+
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    client.download_media = AsyncMock(side_effect=download_media)
+    with patch("tg_cli.commands.download.os.unlink", side_effect=unlink):
+        result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    payload = _error(result)
+    assert payload["type"] == "DownloadError"
+    assert "message 5" in payload["error"]
+    [leftover] = [n for n in _names(tmp_path) if n.startswith(".")]
+    assert leftover in payload["error"]
+    assert (tmp_path / "-1000000000001_5.jpg").read_bytes() == b"photo"
+
+
+@pytest.mark.parametrize(
+    "exc,error_type,cause",
+    [
+        pytest.param(
+            ConnectionError("Connection lost"),
+            "DownloadError",
+            "Connection lost",
+            id="connection",
+        ),
+        pytest.param(_ServerError(), "TelegramError", "INTERNAL", id="rpc"),
+        pytest.param(
+            FloodWaitError(request=None, capture=30),
+            "FloodWaitError",
+            "retry after 30 seconds",
+            id="flood",
+        ),
+    ],
+)
+def test_download_failure_names_the_file_its_cleanup_left_behind(
+    tmp_path: Path, exc: BaseException, error_type: str, cause: str
+) -> None:
+    async def download_media(message: Any, *, file: str, thumb: Any) -> str:
+        Path(file).write_bytes(b"partial")
+        tmp_path.chmod(0o500)
+        raise exc
+
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    client.download_media = AsyncMock(side_effect=download_media)
+    try:
+        result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    finally:
+        tmp_path.chmod(0o700)
+    payload = _error(result)
+    assert payload["type"] == error_type
+    assert cause in payload["error"]
+    [leftover] = _names(tmp_path)
+    assert leftover.startswith(".")
+    assert str(tmp_path / leftover) in payload["error"]
+    assert "Permission denied" in payload["error"]
 
 
 # --- target name ---------------------------------------------------------

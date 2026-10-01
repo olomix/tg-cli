@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 import tempfile
+from collections.abc import Iterable
 from typing import Any
 
 import click
@@ -147,22 +147,53 @@ async def _download_variant(
         if size == 0:
             raise DownloadError(no_data)
         if size > max_bytes:
-            return None
-        # Swaps a symlink at ``path`` instead of writing through it.
-        os.replace(written, path)
-        return size
-    except OSError as exc:
+            saved_bytes = None
+        else:
+            # Swaps a symlink at ``path`` instead of writing through it.
+            os.replace(written, path)
+            saved_bytes = size
+    except BaseException as exc:
+        failure = exc
         # Covers a dropped connection too: ``ConnectionError`` and
         # ``TimeoutError`` are ``OSError`` subclasses.
+        if isinstance(exc, OSError):
+            failure = DownloadError(
+                f"Cannot save the photo of message {raw.id}: "
+                f"{str(exc) or type(exc).__name__}"
+            )
+        undeleted = _delete_files(leftovers)
+        if undeleted is not None:
+            # A note, so the failure keeps its own type and text. Set
+            # by hand: ``add_note`` needs Python 3.11.
+            failure.__notes__ = [
+                *getattr(failure, "__notes__", ()),
+                f"(a temporary file for the photo of message {raw.id} "
+                f"was left behind: {undeleted})",
+            ]
+        if failure is exc:
+            raise
+        raise failure from exc
+    undeleted = _delete_files(leftovers)
+    if undeleted is not None:
         raise DownloadError(
-            f"Cannot save the photo of message {raw.id}: "
-            f"{str(exc) or type(exc).__name__}"
-        ) from exc
-    finally:
-        for leftover in leftovers:
-            # A failed cleanup must not replace the error being raised.
-            with contextlib.suppress(OSError):
-                os.unlink(leftover)
+            f"Cannot delete a temporary file for the photo of message "
+            f"{raw.id}: {undeleted}"
+        ) from undeleted
+    return saved_bytes
+
+
+def _delete_files(paths: Iterable[str]) -> OSError | None:
+    """Delete each of ``paths`` that still exists and return the first
+    failure, or ``None`` when every file is gone."""
+    failure = None
+    for path in paths:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            failure = failure or exc
+    return failure
 
 
 def _skipped(message_id: int, reason: str) -> dict[str, Any]:

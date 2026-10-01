@@ -167,13 +167,15 @@ given:
 and `bytes` is the file size. For a skipped id `path` and `bytes` are
 `null` and `reason` is `not_found` (no such message), `not_photo` (not
 a photo post, or the photo has expired) or `too_large` (no size fits
-`--max-bytes`). Skips are normal results — exit 0.
+`--max-bytes`, or the downloaded file turned out larger than that and
+was deleted). Skips are normal results — exit 0.
 
 A failure while downloading or writing ends the command with a
 non-zero exit: `DownloadError` (dropped connection, empty download,
 disk error), `TelegramError` or `FloodWaitError`. Photos saved before
-the failure stay in place. Read a saved photo with the Read tool to
-look at it.
+the failure stay in place. If a temporary file could not be deleted
+either, the same error names the file left behind. Read a saved photo
+with the Read tool to look at it.
 
 ### `tg login [--phone +NNN]`
 
@@ -219,7 +221,9 @@ be `null`.
   `webpage` even when it shows a picture; an image sent as a file is
   `document`. Only `photo` can be fetched with `tg download`.
 - `grouped_id` — the album id shared by the messages of one album, or
-  `null`. Treat messages with the same `grouped_id` as one post.
+  `null`. Treat messages with the same `group_id` and the same
+  non-null `grouped_id` as one post; `null` means the message is not
+  part of an album, so never group on it.
 - `urls` — the URLs in the message, in order of appearance and without
   duplicates: plain URLs and the hidden targets of text links. Empty
   array when there are none.
@@ -286,7 +290,9 @@ tg messages "<group>" --after-id <C> --through-id <H> --limit 100
   for that run.
 - Ids are not contiguous; gaps are normal.
 - Treat a page as an error if its ids are not strictly increasing,
-  fall outside `(C, H]`, or do not advance `C`.
+  fall outside `(C, H]`, or do not advance `C`. An empty page (`[]`)
+  is not an error: it ends the range, as happens when the previous
+  page was exactly full or nothing new was posted.
 - If `H` is below the stored cursor (messages were deleted), there is
   nothing new. Never move a cursor backwards.
 - A reply whose parent lies outside the range: fetch the parent with

@@ -122,7 +122,10 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
             if classified is None:
                 raise
             message, error_type = classified
-            emit_error(message, error_type)
+            # Notes report what else went wrong while the error was
+            # raised, such as a file its cleanup left behind.
+            notes = getattr(exc, "__notes__", ())
+            emit_error(" ".join([message, *notes]), error_type)
             raise click.exceptions.Exit(1) from exc
 
     return wrapper

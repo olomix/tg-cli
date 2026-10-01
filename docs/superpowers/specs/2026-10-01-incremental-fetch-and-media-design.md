@@ -75,9 +75,11 @@ that arrive during the run are left for the next run instead of being
 half-read.
 
 A caller should treat a page as an error if its ids are not strictly
-increasing, fall outside `(C, H]`, or do not advance `C`. If the newest
-visible id is below a stored cursor (messages were deleted), there is
-nothing new; a cursor is never moved backwards.
+increasing, fall outside `(C, H]`, or do not advance `C`. An empty
+page is not an error: it has no ids to check and ends the range, as
+happens when the previous page was exactly full or nothing new was
+posted. If the newest visible id is below a stored cursor (messages
+were deleted), there is nothing new; a cursor is never moved backwards.
 
 ## 2. New `Message` fields
 

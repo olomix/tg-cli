@@ -156,9 +156,11 @@ the next run instead of being half-read. Ids are not contiguous; gaps
 are normal, so do not count on a page covering a fixed span of ids.
 
 A caller should treat a page as an error if its ids are not strictly
-increasing, fall outside `(C, H]`, or do not advance `C`. If the newest
-visible id is below the stored cursor (messages were deleted), there is
-nothing new; never move a cursor backwards.
+increasing, fall outside `(C, H]`, or do not advance `C`. An empty
+page is not an error: it has no ids to check and ends the range, as
+happens when the previous page was exactly full or nothing new was
+posted. If the newest visible id is below the stored cursor (messages
+were deleted), there is nothing new; never move a cursor backwards.
 
 ### `tg search <group> <query> [--since TIME] [--limit N] [--pretty]`
 
@@ -255,7 +257,8 @@ downloading or writing ends the command with a JSON error and a
 non-zero exit: `DownloadError` for a dropped connection, an empty
 download or a disk error, `TelegramError` or `FloodWaitError` when
 Telegram refuses the request. Photos saved before the failure stay in
-place.
+place. If a temporary file could not be deleted either, the same error
+names the file left behind.
 
 Each photo is downloaded under a temporary hidden name inside `DIR`
 and renamed into place once complete, so a partial file never carries

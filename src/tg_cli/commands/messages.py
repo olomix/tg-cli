@@ -96,20 +96,27 @@ async def _collect_messages(
         entity = await resolve(client, group)
         group_id = marked_peer_id(entity)
         link_base = message_link_base(entity)
+        collected: list[Message] = []
         if after_id is not None:
             if _is_empty_id_range(after_id, through_id):
                 return []
             bounds = {"min_id": after_id}
+            last_id = _MAX_MESSAGE_ID
             if through_id is not None:
                 # Telethon's ``max_id`` is exclusive.
                 bounds["max_id"] = through_id + 1
-            return [
-                to_message(raw, group_id, link_base=link_base)
-                async for raw in client.iter_messages(
-                    entity, limit=limit, reverse=True, **bounds
+                last_id = through_id
+            async for raw in client.iter_messages(
+                entity, limit=limit, reverse=True, **bounds
+            ):
+                collected.append(
+                    to_message(raw, group_id, link_base=link_base)
                 )
-            ]
-        collected: list[Message] = []
+                # Telethon's next request starts at ``raw.id + 1``, which
+                # overflows the 32-bit field after the largest id.
+                if raw.id >= last_id:
+                    break
+            return collected
         # Iterate newest-first so ``--limit`` caps to the most recent
         # messages (not the earliest ones). With ``--since``, stop once
         # we cross the cutoff; the list is then reversed for the

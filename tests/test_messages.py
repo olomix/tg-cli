@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -863,6 +864,39 @@ def test_messages_through_id_accepts_the_largest_id() -> None:
     _, kwargs = client.iter_messages.call_args
     assert kwargs["min_id"] == 100
     assert kwargs["max_id"] == 2147483648
+
+
+class _FailingPastTheEnd(_AsyncIter):
+    """Asked for more after its last item, fails the way Telethon does
+    when the next request would start past the largest id."""
+
+    async def __anext__(self) -> Any:
+        if not self._items:
+            raise struct.error(
+                "'i' format requires -2147483648 <= number <= 2147483647"
+            )
+        return self._items.pop(0)
+
+
+@pytest.mark.parametrize("through", [[], ["--through-id", "2147483647"]])
+def test_messages_stops_reading_at_the_largest_id(through: list[str]) -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    client.iter_messages = MagicMock(
+        return_value=_FailingPastTheEnd(_history(2147483646, 2147483647))
+    )
+    result = _invoke(client, "1", "--after-id", "2147483645", *through)
+    assert _output_ids(result) == [2147483646, 2147483647]
+
+
+def test_messages_stops_reading_at_through_id() -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    client.iter_messages = MagicMock(
+        return_value=_FailingPastTheEnd(_history(150, 200))
+    )
+    result = _invoke(
+        client, "1", "--after-id", "100", "--through-id", "200"
+    )
+    assert _output_ids(result) == [150, 200]
 
 
 def test_to_message_helper_handles_missing_attributes() -> None:
