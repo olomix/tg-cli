@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+from telethon.tl import types
+
 from tg_cli.commands._message import to_message
 
 _GROUP_ID = -1001234567890
@@ -33,6 +36,62 @@ def _reply_header(**fields: Any) -> SimpleNamespace:
     }
     header.update(fields)
     return SimpleNamespace(**header)
+
+
+def _photo() -> types.Photo:
+    return types.Photo(
+        id=1,
+        access_hash=2,
+        file_reference=b"",
+        date=None,
+        sizes=[types.PhotoSize(type="x", w=800, h=600, size=1000)],
+        dc_id=1,
+    )
+
+
+def _document_media(*attributes: Any) -> types.MessageMediaDocument:
+    document = types.Document(
+        id=1,
+        access_hash=2,
+        file_reference=b"",
+        date=None,
+        mime_type="application/octet-stream",
+        size=1000,
+        dc_id=1,
+        attributes=list(attributes),
+    )
+    return types.MessageMediaDocument(document=document)
+
+
+def _video_attribute() -> types.DocumentAttributeVideo:
+    return types.DocumentAttributeVideo(duration=3, w=640, h=480)
+
+
+def _sticker_attribute() -> types.DocumentAttributeSticker:
+    return types.DocumentAttributeSticker(
+        alt="", stickerset=types.InputStickerSetEmpty()
+    )
+
+
+def _webpage_media(photo: Any = None) -> types.MessageMediaWebPage:
+    webpage = types.WebPage(
+        id=1,
+        url="https://example.com/post",
+        display_url="example.com/post",
+        hash=0,
+        photo=photo,
+    )
+    return types.MessageMediaWebPage(webpage=webpage)
+
+
+def _poll_media() -> types.MessageMediaPoll:
+    poll = types.Poll(
+        id=1,
+        question=types.TextWithEntities(text="Tabs?", entities=[]),
+        answers=[],
+        hash=0,
+    )
+    return types.MessageMediaPoll(poll=poll, results=types.PollResults())
 
 
 def test_sender_username_is_taken_from_the_sender() -> None:
@@ -123,3 +182,114 @@ def test_grouped_id_is_none_when_the_message_has_none() -> None:
 def test_grouped_id_is_none_when_the_attribute_is_missing() -> None:
     msg = to_message(_raw(), _GROUP_ID)
     assert msg.grouped_id is None
+
+
+@pytest.mark.parametrize(
+    ("media", "expected"),
+    [
+        pytest.param(
+            types.MessageMediaPhoto(photo=_photo()), "photo", id="photo"
+        ),
+        pytest.param(_webpage_media(), "webpage", id="webpage"),
+        pytest.param(_poll_media(), "poll", id="poll"),
+        pytest.param(
+            _document_media(_sticker_attribute()), "sticker", id="sticker"
+        ),
+        pytest.param(
+            _document_media(types.DocumentAttributeAnimated()),
+            "gif",
+            id="gif",
+        ),
+        pytest.param(_document_media(_video_attribute()), "video", id="video"),
+        pytest.param(
+            _document_media(
+                types.DocumentAttributeAudio(duration=5, voice=True)
+            ),
+            "voice",
+            id="voice",
+        ),
+        pytest.param(
+            _document_media(types.DocumentAttributeAudio(duration=180)),
+            "audio",
+            id="audio",
+        ),
+        pytest.param(
+            _document_media(
+                types.DocumentAttributeFilename(file_name="report.pdf")
+            ),
+            "document",
+            id="document",
+        ),
+        pytest.param(
+            types.MessageMediaGeo(
+                geo=types.GeoPoint(long=30.5, lat=50.4, access_hash=0)
+            ),
+            "other",
+            id="other",
+        ),
+    ],
+)
+def test_media_kind_names_the_attached_media(
+    media: Any, expected: str
+) -> None:
+    msg = to_message(_raw(media=media), _GROUP_ID)
+    assert msg.media_kind == expected
+
+
+def test_media_kind_is_none_when_media_is_none() -> None:
+    msg = to_message(_raw(media=None), _GROUP_ID)
+    assert msg.media_kind is None
+
+
+def test_media_kind_is_none_when_the_attribute_is_missing() -> None:
+    msg = to_message(_raw(), _GROUP_ID)
+    assert msg.media_kind is None
+
+
+def test_media_kind_of_a_link_preview_with_an_image_is_webpage() -> None:
+    # ``photo`` mirrors Telethon's ``Message.photo``, which also returns
+    # the preview image of a link.
+    photo = _photo()
+    raw = _raw(media=_webpage_media(photo=photo), photo=photo)
+    assert to_message(raw, _GROUP_ID).media_kind == "webpage"
+
+
+def test_media_kind_of_a_chat_photo_service_message_is_none() -> None:
+    # ``photo`` mirrors Telethon's ``Message.photo``, which also returns
+    # the picture of a "chat photo changed" action.
+    photo = _photo()
+    raw = _raw(
+        message=None,
+        text=None,
+        media=None,
+        action=types.MessageActionChatEditPhoto(photo=photo),
+        photo=photo,
+    )
+    assert to_message(raw, _GROUP_ID).media_kind is None
+
+
+def test_media_kind_of_an_animation_with_a_video_attribute_is_gif() -> None:
+    media = _document_media(
+        _video_attribute(), types.DocumentAttributeAnimated()
+    )
+    assert to_message(_raw(media=media), _GROUP_ID).media_kind == "gif"
+
+
+def test_media_kind_of_a_sticker_with_a_video_attribute_is_sticker() -> None:
+    media = _document_media(_video_attribute(), _sticker_attribute())
+    assert to_message(_raw(media=media), _GROUP_ID).media_kind == "sticker"
+
+
+def test_media_kind_of_an_expired_photo_is_photo() -> None:
+    media = types.MessageMediaPhoto(photo=None)
+    assert to_message(_raw(media=media), _GROUP_ID).media_kind == "photo"
+
+
+def test_media_kind_of_media_without_a_document_is_document() -> None:
+    media = types.MessageMediaDocument(document=None)
+    assert to_message(_raw(media=media), _GROUP_ID).media_kind == "document"
+
+
+def test_media_kind_of_an_empty_document_is_document() -> None:
+    media = types.MessageMediaDocument(document=types.DocumentEmpty(id=1))
+    assert to_message(_raw(media=media), _GROUP_ID).media_kind == "document"

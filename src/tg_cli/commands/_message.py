@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from telethon.tl import types as _tl
+
 from ..models import Message
 
 
@@ -47,6 +49,7 @@ def to_message(raw: Any, group_id: int) -> Message:
         group_id=group_id,
         sender_username=_sender_username(sender),
         topic_id=_topic_id(raw),
+        media_kind=_media_kind(raw),
         grouped_id=_grouped_id(raw),
     )
 
@@ -106,3 +109,43 @@ def _topic_id(raw: Any) -> int | None:
 def _grouped_id(raw: Any) -> int | None:
     grouped_id = getattr(raw, "grouped_id", None)
     return int(grouped_id) if grouped_id is not None else None
+
+
+def _media_kind(raw: Any) -> str | None:
+    # Decided by the outer media type: Telethon's ``Message.photo`` also
+    # returns a link preview's image and a "chat photo changed" picture.
+    media = getattr(raw, "media", None)
+    if media is None:
+        return None
+    if isinstance(media, _tl.MessageMediaWebPage):
+        return "webpage"
+    if isinstance(media, _tl.MessageMediaPhoto):
+        return "photo"
+    if isinstance(media, _tl.MessageMediaDocument):
+        return _document_kind(media.document)
+    if isinstance(media, _tl.MessageMediaPoll):
+        return "poll"
+    return "other"
+
+
+def _document_kind(document: Any) -> str:
+    # An expired or empty document has no attributes at all.
+    attributes = getattr(document, "attributes", None) or []
+
+    def find(attribute_type: type) -> Any:
+        return next(
+            (a for a in attributes if isinstance(a, attribute_type)), None
+        )
+
+    # Stickers and animations also carry a video attribute, so they are
+    # checked before it.
+    if find(_tl.DocumentAttributeSticker) is not None:
+        return "sticker"
+    if find(_tl.DocumentAttributeAnimated) is not None:
+        return "gif"
+    if find(_tl.DocumentAttributeVideo) is not None:
+        return "video"
+    audio = find(_tl.DocumentAttributeAudio)
+    if audio is not None:
+        return "voice" if audio.voice else "audio"
+    return "document"

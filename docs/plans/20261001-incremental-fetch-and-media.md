@@ -358,11 +358,11 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `src/tg_cli/commands/_message.py`
 - Modify: `tests/test_message_fields.py`
 
-- [ ] write failing tests, one per value, using real Telethon media objects on the `media` attribute: `photo`, `webpage`, `poll`, `sticker`, `gif`, `video`, `voice`, `audio`, `document`, `other` (for example `MessageMediaGeo`), and null for no media
-- [ ] write failing tests for the traps: a `MessageMediaWebPage` whose page has a photo is `webpage`; a service message with a `MessageActionChatEditPhoto` action and no media is null; a document with both animated and video attributes is `gif`; a sticker document that also has a video attribute is `sticker`
-- [ ] write failing tests for empty payloads: `MessageMediaPhoto(photo=None)` is `photo` and does not raise; `MessageMediaDocument(document=None)` and a `DocumentEmpty` are `document` and do not raise
-- [ ] implement `_media_kind(raw)` in `_message.py` following the precedence in Technical Details, and call it from `to_message`
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 4
+- [x] write failing tests, one per value, using real Telethon media objects on the `media` attribute: `photo`, `webpage`, `poll`, `sticker`, `gif`, `video`, `voice`, `audio`, `document`, `other` (for example `MessageMediaGeo`), and null for no media
+- [x] write failing tests for the traps: a `MessageMediaWebPage` whose page has a photo is `webpage`; a service message with a `MessageActionChatEditPhoto` action and no media is null; a document with both animated and video attributes is `gif`; a sticker document that also has a video attribute is `sticker`
+- [x] write failing tests for empty payloads: `MessageMediaPhoto(photo=None)` is `photo` and does not raise; `MessageMediaDocument(document=None)` and a `DocumentEmpty` are `document` and do not raise
+- [x] implement `_media_kind(raw)` in `_message.py` following the precedence in Technical Details, and call it from `to_message`
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 4
 
 ### Task 4: Extract `urls` and `forward`
 
