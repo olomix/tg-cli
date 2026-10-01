@@ -131,6 +131,13 @@ def test_thread_includes_root_first_then_chronological_replies() -> None:
         "text": "question",
         "reply_to_id": None,
         "group_id": -1001234567890,
+        "sender_username": None,
+        "topic_id": None,
+        "media_kind": None,
+        "grouped_id": None,
+        "urls": [],
+        "forward": None,
+        "link": None,
     }
     assert data[1]["reply_to_id"] == 10
     assert data[2]["reply_to_id"] == 10

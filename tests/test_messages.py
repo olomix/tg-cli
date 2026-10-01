@@ -102,7 +102,96 @@ def test_message_to_dict_serialises_date_as_iso_string() -> None:
         "text": "hello",
         "reply_to_id": None,
         "group_id": -1001,
+        "sender_username": None,
+        "topic_id": None,
+        "media_kind": None,
+        "grouped_id": None,
+        "urls": [],
+        "forward": None,
+        "link": None,
     }
+
+
+def _message_with_old_arguments_only() -> Message:
+    return Message(
+        id=1,
+        date=datetime(2026, 4, 17, 10, 23, 45, tzinfo=timezone.utc),
+        sender_id=42,
+        sender_name="Alice",
+        text="hello",
+        reply_to_id=None,
+        group_id=-1001,
+    )
+
+
+def test_message_to_dict_appends_new_keys_after_the_old_ones() -> None:
+    data = _message_with_old_arguments_only().to_dict()
+    assert list(data) == [
+        "id",
+        "date",
+        "sender_id",
+        "sender_name",
+        "text",
+        "reply_to_id",
+        "group_id",
+        "sender_username",
+        "topic_id",
+        "media_kind",
+        "grouped_id",
+        "urls",
+        "forward",
+        "link",
+    ]
+
+
+def test_message_new_fields_default_to_absent() -> None:
+    data = _message_with_old_arguments_only().to_dict()
+    assert data["sender_username"] is None
+    assert data["topic_id"] is None
+    assert data["media_kind"] is None
+    assert data["grouped_id"] is None
+    assert data["urls"] == []
+    assert data["forward"] is None
+    assert data["link"] is None
+
+
+def test_message_to_dict_serialises_new_fields_unchanged() -> None:
+    forward = {
+        "from_id": -1009876543210,
+        "from_name": "Origin",
+        "date": "2026-04-16T08:00:00+00:00",
+    }
+    m = Message(
+        id=7,
+        date=datetime(2026, 4, 17, 10, 23, 45, tzinfo=timezone.utc),
+        sender_id=42,
+        sender_name="Alice",
+        text="look https://example.com",
+        reply_to_id=5,
+        group_id=-1001,
+        sender_username="alice",
+        topic_id=3,
+        media_kind="photo",
+        grouped_id=13579,
+        urls=["https://example.com", "https://example.org/a"],
+        forward=forward,
+        link="https://t.me/dev/3/7",
+    )
+    data = m.to_dict()
+    assert data["sender_username"] == "alice"
+    assert data["topic_id"] == 3
+    assert data["media_kind"] == "photo"
+    assert data["grouped_id"] == 13579
+    assert data["urls"] == ["https://example.com", "https://example.org/a"]
+    assert data["forward"] == forward
+    assert data["link"] == "https://t.me/dev/3/7"
+
+
+def test_message_instances_do_not_share_one_urls_list() -> None:
+    first = _message_with_old_arguments_only()
+    second = _message_with_old_arguments_only()
+    assert first.urls == []
+    assert first.urls is not second.urls
 
 
 def test_messages_outputs_contract_shape() -> None:
@@ -145,6 +234,13 @@ def test_messages_outputs_contract_shape() -> None:
             "text": "hello",
             "reply_to_id": None,
             "group_id": -1001234567890,
+            "sender_username": None,
+            "topic_id": None,
+            "media_kind": None,
+            "grouped_id": None,
+            "urls": [],
+            "forward": None,
+            "link": None,
         },
         {
             "id": 2,
@@ -154,6 +250,13 @@ def test_messages_outputs_contract_shape() -> None:
             "text": "reply",
             "reply_to_id": 1,
             "group_id": -1001234567890,
+            "sender_username": None,
+            "topic_id": None,
+            "media_kind": None,
+            "grouped_id": None,
+            "urls": [],
+            "forward": None,
+            "link": None,
         },
     ]
     client.get_entity.assert_awaited_once_with("@dev")

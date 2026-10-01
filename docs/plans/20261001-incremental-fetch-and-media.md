@@ -329,11 +329,11 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `tests/test_search.py`
 - Modify: `tests/test_thread.py`
 
-- [ ] write failing tests in `tests/test_messages.py`: `to_dict()` of a `Message` built with only the old arguments emits the seven old keys in their current order followed by `sender_username`, `topic_id`, `media_kind`, `grouped_id`, `urls`, `forward`, `link`, with `None` for each except `urls`, which is `[]`
-- [ ] write failing test: a `Message` built with every new field set serialises each value unchanged, and two instances do not share one `urls` list
-- [ ] add the seven fields with defaults to `Message` and extend `to_dict()`
-- [ ] update the exact-shape assertions in `tests/test_messages.py` (two), `tests/test_search.py` and `tests/test_thread.py` to include the new keys with their default values
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 2
+- [x] write failing tests in `tests/test_messages.py`: `to_dict()` of a `Message` built with only the old arguments emits the seven old keys in their current order followed by `sender_username`, `topic_id`, `media_kind`, `grouped_id`, `urls`, `forward`, `link`, with `None` for each except `urls`, which is `[]`
+- [x] write failing test: a `Message` built with every new field set serialises each value unchanged, and two instances do not share one `urls` list
+- [x] add the seven fields with defaults to `Message` and extend `to_dict()`
+- [x] update the exact-shape assertions in `tests/test_messages.py` (two), `tests/test_search.py` and `tests/test_thread.py` to include the new keys with their default values
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 2
 
 ### Task 2: Extract `sender_username`, `topic_id` and `grouped_id`
 

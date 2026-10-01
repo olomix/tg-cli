@@ -7,7 +7,7 @@ Claude Code skill and must remain backward compatible.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -46,6 +46,13 @@ class Message:
     text: str
     reply_to_id: int | None
     group_id: int
+    sender_username: str | None = None
+    topic_id: int | None = None
+    media_kind: str | None = None
+    grouped_id: int | None = None
+    urls: list[str] = field(default_factory=list)
+    forward: dict[str, Any] | None = None
+    link: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -56,4 +63,11 @@ class Message:
             "text": self.text,
             "reply_to_id": self.reply_to_id,
             "group_id": self.group_id,
+            "sender_username": self.sender_username,
+            "topic_id": self.topic_id,
+            "media_kind": self.media_kind,
+            "grouped_id": self.grouped_id,
+            "urls": self.urls,
+            "forward": self.forward,
+            "link": self.link,
         }
