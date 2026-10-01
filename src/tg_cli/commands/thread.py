@@ -11,14 +11,14 @@ from telethon import errors as telethon_errors
 from ..client import make_client
 from ..errors import AuthError, MessageNotFoundError, handle_errors
 from ..models import Message
-from ._message import to_message
+from ._message import MESSAGE_ID, to_message
 from ._peer import marked_peer_id, message_link_base
 from ._resolve import resolve
 
 
 @click.command()
 @click.argument("group")
-@click.argument("message_id", type=int)
+@click.argument("message_id", type=MESSAGE_ID)
 @click.option(
     "--limit",
     type=click.IntRange(min=1),

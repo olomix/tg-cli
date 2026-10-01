@@ -271,7 +271,10 @@ accepted and noted in the README.
 Index the answer by `message.id` (`messages_by_id` in `_message.py`)
 and output the found messages in the order the ids were requested; an
 id requested twice is output twice. Ids are
-`click.IntRange(min=1, max=2**31 - 1)`, `nargs=-1, required=True`.
+`click.IntRange(min=1, max=2**31 - 1)`, `nargs=-1, required=True`. That
+type is `MESSAGE_ID` in `_message.py`, shared with `tg download` and
+`tg thread`; the range options of `tg messages` build theirs, which
+allows 0, from the same `MAX_MESSAGE_ID`.
 
 For `get` and `download`, a negative group id needs the `--` separator,
 and after `--` every token is positional. Options must therefore come
@@ -282,7 +285,7 @@ first: `tg download --dir d -- -100123 5` works,
 
 - Options: `--dir` (required), `--max-bytes`
   (`click.IntRange(min=1)`, default `5 * 1024 * 1024`). Message ids are
-  `click.IntRange(min=1, max=2**31 - 1)`.
+  the shared `MESSAGE_ID`, `click.IntRange(min=1, max=2**31 - 1)`.
 - Directory, checked before connecting to Telegram:
   `os.makedirs(dir, mode=0o700, exist_ok=True)`, then require
   `os.path.isdir(dir)` and `os.access(dir, os.W_OK | os.X_OK)`. Any

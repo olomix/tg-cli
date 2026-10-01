@@ -80,8 +80,9 @@ Output: JSON array of objects with shape:
   "member_count": 42
 }
 ```
-`type` is one of `group`, `supergroup`, `channel`. `username` and
-`member_count` may be `null`.
+`type` is one of `group`, `supergroup`, `channel`. `username` (the
+first active one when the group has several) and `member_count` may be
+`null`.
 
 ### `tg messages <group> [--since TIME] [--after-id N [--through-id M]] [--limit N] [--pretty]`
 
@@ -116,7 +117,8 @@ Output: JSON array of `Message` objects (possibly empty — exit 0).
 ### `tg thread <group> <message_id> [--limit N] [--pretty]`
 
 Fetch `<message_id>` and its replies. Root message is returned first,
-then replies in chronological order.
+then replies in chronological order. `<message_id>` is a whole number
+from 1 to 2147483647; anything else is a `UsageError` (exit 2).
 
 Output: JSON array of `Message` objects. Fails with
 `MessageNotFoundError` if the id does not exist in `<group>`.

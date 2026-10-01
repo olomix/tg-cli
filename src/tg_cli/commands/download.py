@@ -15,19 +15,16 @@ from telethon.tl import types as _tl
 
 from ..client import make_client
 from ..errors import AuthError, DownloadError, handle_errors
-from ._message import messages_by_id
+from ._message import MESSAGE_ID, messages_by_id
 from ._peer import marked_peer_id
 from ._resolve import resolve
 
-# Telegram message ids are 32-bit; Telethon raises ``struct.error``
-# instead of an RPC error for anything larger.
-_MESSAGE_ID = click.IntRange(min=1, max=2**31 - 1)
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 
 
 @click.command()
 @click.argument("group")
-@click.argument("message_ids", type=_MESSAGE_ID, nargs=-1, required=True)
+@click.argument("message_ids", type=MESSAGE_ID, nargs=-1, required=True)
 @click.option(
     "--dir",
     "directory",
@@ -49,8 +46,11 @@ def download(
     directory: str,
     max_bytes: int,
 ) -> None:
-    """Save the photos of messages MESSAGE_IDS from GROUP into a
-    directory and print one JSON result per id, in the order given."""
+    """Save the photos of messages MESSAGE_IDS from GROUP.
+
+    The photos go into the --dir directory. Prints one JSON result per
+    id, in the order given.
+    """
     _require_writable_dir(directory)
     results = asyncio.run(
         _download_photos(
@@ -124,9 +124,11 @@ async def _save_photo(
 async def _download_variant(
     client: Any, raw: Any, variant: Any, path: str, max_bytes: int
 ) -> int | None:
-    """Download one size of the message's photo to ``path`` and return
-    its byte count, or ``None`` when the file turns out larger than
-    ``max_bytes``. ``path`` is only touched by a complete download."""
+    """Download one size of the message's photo to ``path``.
+
+    Returns its byte count, or ``None`` when the file turns out larger
+    than ``max_bytes``. ``path`` is only touched by a complete download.
+    """
     temp_path: str | None = None
     try:
         # Hidden, so a partial file is not taken for a photo. Created
@@ -194,9 +196,11 @@ def _skipped(message_id: int, reason: str) -> dict[str, Any]:
 
 
 def _real_variants(raw: Any) -> list[tuple[int, Any]]:
-    """Return ``(declared bytes, variant)`` for each size of the
-    message's photo that holds a real image; empty when the message is
-    not a photo post."""
+    """Return ``(declared bytes, variant)`` for each real photo size.
+
+    A real size is one that holds an image to download. Empty when the
+    message is not a photo post.
+    """
     media = getattr(raw, "media", None)
     # A link preview's image is a ``MessageMediaWebPage`` and an image
     # sent as a file a ``MessageMediaDocument``; neither is a photo post.

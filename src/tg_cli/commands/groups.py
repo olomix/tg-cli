@@ -12,7 +12,12 @@ from telethon.tl import types as _tl
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Group
-from ._peer import is_group_entity, is_migrated_chat, marked_peer_id
+from ._peer import (
+    is_group_entity,
+    is_migrated_chat,
+    marked_peer_id,
+    public_username,
+)
 
 _TYPE_CHOICES = ("group", "channel", "all")
 
@@ -97,7 +102,7 @@ def _dialog_to_group(dialog: Any) -> Group | None:
         id=marked_peer_id(entity),
         title=_entity_title(entity, dialog),
         type=kind,
-        username=getattr(entity, "username", None),
+        username=public_username(entity),
         member_count=getattr(entity, "participants_count", None),
     )
 

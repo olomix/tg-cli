@@ -10,18 +10,14 @@ import click
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Message
-from ._message import messages_by_id, to_message
+from ._message import MESSAGE_ID, messages_by_id, to_message
 from ._peer import marked_peer_id, message_link_base
 from ._resolve import resolve
-
-# Telegram message ids are 32-bit; Telethon raises ``struct.error``
-# instead of an RPC error for anything larger.
-_MESSAGE_ID = click.IntRange(min=1, max=2**31 - 1)
 
 
 @click.command()
 @click.argument("group")
-@click.argument("message_ids", type=_MESSAGE_ID, nargs=-1, required=True)
+@click.argument("message_ids", type=MESSAGE_ID, nargs=-1, required=True)
 @click.option(
     "--pretty",
     is_flag=True,
@@ -29,8 +25,11 @@ _MESSAGE_ID = click.IntRange(min=1, max=2**31 - 1)
 )
 @handle_errors
 def get(group: str, message_ids: tuple[int, ...], pretty: bool) -> None:
-    """Fetch the messages MESSAGE_IDS from GROUP, in the order given, as
-    JSON. Ids that do not exist are omitted."""
+    """Fetch the messages MESSAGE_IDS from GROUP as JSON.
+
+    The messages come in the order the ids were given. Ids that do not
+    exist are omitted.
+    """
     result = asyncio.run(_collect_by_id(group, list(message_ids)))
     payload = [m.to_dict() for m in result]
     click.echo(json.dumps(payload, indent=2 if pretty else None))

@@ -175,6 +175,14 @@ def test_help_lists_every_command() -> None:
     assert _COMMANDS.issubset(listed)
 
 
+def test_help_shows_the_whole_summary_of_every_command() -> None:
+    result = CliRunner().invoke(cli.main, ["--help"])
+    assert result.exit_code == 0, result.output
+    command_lines = result.stdout.split("Commands:\n")[1].splitlines()
+    # Click ends a summary it had to cut with "...".
+    assert [line for line in command_lines if line.endswith("...")] == []
+
+
 @pytest.mark.parametrize("command,extra_args", _OUTPUT_COMMANDS)
 def test_command_default_output_is_parseable_json_array(
     command: str, extra_args: list[str]

@@ -2,7 +2,7 @@
 
 Shared by ``tg messages`` / ``tg search`` / ``tg thread`` / ``tg get``
 so the JSON output shape is identical regardless of how the message was
-fetched.
+fetched. Also holds the id limit and the Click type of a message id.
 """
 
 from __future__ import annotations
@@ -11,11 +11,17 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
+import click
 from telethon import utils as _utils
 from telethon.tl import types as _tl
 
 from ..models import Message
 from ._peer import public_username
+
+# Telegram message ids are 32-bit; Telethon raises ``struct.error``
+# instead of an RPC error for anything larger.
+MAX_MESSAGE_ID = 2**31 - 1
+MESSAGE_ID = click.IntRange(min=1, max=MAX_MESSAGE_ID)
 
 
 def to_message(

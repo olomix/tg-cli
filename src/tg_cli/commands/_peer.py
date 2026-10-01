@@ -20,7 +20,7 @@ against the ``SimpleNamespace`` mocks the unit tests use.
 
 ``message_link_base`` gives the ``t.me`` prefix of a group's message
 permalinks and ``public_username`` a peer's ``@username``; every
-command that emits messages uses both.
+command that emits messages uses both, and ``tg groups`` the latter.
 """
 
 from __future__ import annotations
@@ -63,8 +63,10 @@ def message_link_base(entity: Any) -> str | None:
 
 
 def public_username(entity: Any) -> str | None:
-    """Return the ``@username`` of a user, group or channel without the
-    ``@``, or ``None`` when it has none."""
+    """Return a peer's ``@username`` without the ``@``, if it has one.
+
+    The peer is a user, group or channel.
+    """
     username = getattr(entity, "username", None)
     if username:
         return str(username)

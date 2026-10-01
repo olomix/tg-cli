@@ -11,15 +11,14 @@ import click
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Message
-from ._message import to_message
+from ._message import MAX_MESSAGE_ID, to_message
 from ._peer import marked_peer_id, message_link_base
 from ._resolve import resolve
 from ._time import parse as parse_time
 
-# Telegram message ids are 32-bit; Telethon raises ``struct.error``
-# instead of an RPC error for anything larger.
-_MAX_MESSAGE_ID = 2**31 - 1
-_MESSAGE_ID = click.IntRange(min=0, max=_MAX_MESSAGE_ID)
+# Starts at 0, which no message has: ``--after-id 0`` reads from the
+# first message.
+_ID_BOUND = click.IntRange(min=0, max=MAX_MESSAGE_ID)
 
 
 @click.command()
@@ -34,7 +33,7 @@ _MESSAGE_ID = click.IntRange(min=0, max=_MAX_MESSAGE_ID)
 @click.option(
     "--after-id",
     "after_id",
-    type=_MESSAGE_ID,
+    type=_ID_BOUND,
     default=None,
     help="Only include messages with an id greater than this, reading "
     "the oldest --limit of them. Cannot be combined with --since.",
@@ -42,7 +41,7 @@ _MESSAGE_ID = click.IntRange(min=0, max=_MAX_MESSAGE_ID)
 @click.option(
     "--through-id",
     "through_id",
-    type=_MESSAGE_ID,
+    type=_ID_BOUND,
     default=None,
     help="Only include messages with an id up to and including this. "
     "Requires --after-id.",
@@ -101,7 +100,7 @@ async def _collect_messages(
             if _is_empty_id_range(after_id, through_id):
                 return []
             bounds = {"min_id": after_id}
-            last_id = _MAX_MESSAGE_ID
+            last_id = MAX_MESSAGE_ID
             if through_id is not None:
                 # Telethon's ``max_id`` is exclusive.
                 bounds["max_id"] = through_id + 1
@@ -134,7 +133,7 @@ async def _collect_messages(
 def _is_empty_id_range(after_id: int, through_id: int | None) -> bool:
     # Telethon requests from ``after_id + 1``, which overflows the
     # 32-bit field at the largest id; no message can follow it anyway.
-    if after_id >= _MAX_MESSAGE_ID:
+    if after_id >= MAX_MESSAGE_ID:
         return True
     return through_id is not None and through_id <= after_id
 

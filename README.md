@@ -100,6 +100,9 @@ Example element:
 }
 ```
 
+`username` is the group's `@username` without the `@` (the first active
+one when the group has several), or null for a private group.
+
 ### `tg messages <group> [--since TIME] [--after-id N [--through-id M]] [--limit N] [--pretty]`
 
 Fetch recent messages from `<group>`, oldest first.
@@ -192,6 +195,9 @@ first, then replies in chronological (oldest-first) order.
 ```bash
 tg thread "My Dev Group" 12345
 ```
+
+`<message_id>` is a whole number from 1 to 2147483647; anything else is
+a `UsageError` (exit 2).
 
 ### `tg get <group> <id>... [--pretty]`
 

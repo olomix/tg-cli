@@ -154,6 +154,9 @@ Fetch specific messages by id. Output is a JSON array of `Message`
 objects in the order the ids were given. Ids that do not exist are
 omitted; the command still exits 0, and an empty array is a valid result.
 At least one id is required, each an integer from 1 to 2147483647.
+`tg thread` checks its `<message_id>` the same way, so an id outside
+that range is a usage error there too instead of an uncaught Telethon
+`struct.error`.
 
 Messages are matched to the requested ids by their own id, not by their
 position in Telegram's answer, which may leave an id out or come in
