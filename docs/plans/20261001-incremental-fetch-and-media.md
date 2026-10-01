@@ -496,12 +496,12 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `skill/SKILL.md`
 - Modify: `docs/plans/20260419-forum-topics-support.md`
 
-- [ ] `README.md`: document `--after-id` and `--through-id` on `tg messages` with the paging contract (read `H`, page until a short page, checks a caller should make); add `tg get` and `tg download` sections with examples and the download result shape; replace the Message JSON shape with the fourteen-field version and describe each new field, including the `media_kind` values and the four `link` shapes
-- [ ] `README.md`: change the security note from "strictly read-only" to read-only towards Telegram, with `tg download` writing only inside the directory it is given; add `DownloadError` to the error types
-- [ ] `README.md`: extend the "Negative numeric ids" note for `get` and `download`: options go before `--`, with `tg download --dir photos -- -1001234567890 5` as the example; note that a topic-creation service message has `topic_id` null
-- [ ] `skill/SKILL.md`: mirror the README changes; add `get` and `download` to the command list, the new fields to the message shape, `DownloadError` to the known error types, and a short "read everything since last time" workflow using the paging contract; revise the "read-only" wording in "When to Use"
-- [ ] `docs/plans/20260419-forum-topics-support.md`: note at the top that the `topic_id` field (its Tasks 1 and 2, without the `Topic` dataclass) was delivered by this plan, and mark those items accordingly
-- [ ] move this plan to `docs/plans/completed/`
+- [x] `README.md`: document `--after-id` and `--through-id` on `tg messages` with the paging contract (read `H`, page until a short page, checks a caller should make); add `tg get` and `tg download` sections with examples and the download result shape; replace the Message JSON shape with the fourteen-field version and describe each new field, including the `media_kind` values and the four `link` shapes
+- [x] `README.md`: change the security note from "strictly read-only" to read-only towards Telegram, with `tg download` writing only inside the directory it is given; add `DownloadError` to the error types
+- [x] `README.md`: extend the "Negative numeric ids" note for `get` and `download`: options go before `--`, with `tg download --dir photos -- -1001234567890 5` as the example; note that a topic-creation service message has `topic_id` null
+- [x] `skill/SKILL.md`: mirror the README changes; add `get` and `download` to the command list, the new fields to the message shape, `DownloadError` to the known error types, and a short "read everything since last time" workflow using the paging contract; revise the "read-only" wording in "When to Use"
+- [x] `docs/plans/20260419-forum-topics-support.md`: note at the top that the `topic_id` field (its Tasks 1 and 2, without the `Topic` dataclass) was delivered by this plan, and mark those items accordingly
+- [x] move this plan to `docs/plans/completed/` (deferred - the executor moves the plan after the review phases)
 
 ## Post-Completion
 
