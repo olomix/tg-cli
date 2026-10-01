@@ -173,9 +173,8 @@ was deleted). Skips are normal results — exit 0.
 A failure while downloading or writing ends the command with a
 non-zero exit: `DownloadError` (dropped connection, empty download,
 disk error), `TelegramError` or `FloodWaitError`. Photos saved before
-the failure stay in place. If a temporary file could not be deleted
-either, the same error names the file left behind. Read a saved photo
-with the Read tool to look at it.
+the failure stay in place. Read a saved photo with the Read tool to
+look at it.
 
 ### `tg login [--phone +NNN]`
 
@@ -210,8 +209,8 @@ Emitted by `tg messages`, `tg search`, `tg thread` and `tg get`.
 `date` is ISO 8601 UTC. `sender_name`, `sender_id`, `reply_to_id` may
 be `null`.
 
-- `sender_username` — the sender's `@username` without the `@`, or
-  `null`.
+- `sender_username` — the sender's `@username` without the `@` (the
+  first active one when the sender has several), or `null`.
 - `topic_id` — the forum topic the message was posted in; `null`
   outside forum topics, in a forum's General topic, and on the service
   message that creates a topic.

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import tempfile
-from collections.abc import Iterable
 from typing import Any
 
 import click
@@ -14,6 +14,7 @@ from telethon.tl import types as _tl
 
 from ..client import make_client
 from ..errors import AuthError, DownloadError, handle_errors
+from ._message import messages_by_id
 from ._peer import marked_peer_id
 from ._resolve import resolve
 
@@ -79,14 +80,16 @@ async def _download_photos(
             raise AuthError()
         entity = await resolve(client, group)
         group_id = marked_peer_id(entity)
-        # For a list of ids Telethon answers in request order, with
-        # ``None`` in place of each id that does not exist.
-        found = await client.get_messages(entity, ids=message_ids)
+        found = messages_by_id(
+            await client.get_messages(entity, ids=message_ids)
+        )
         results = []
-        for message_id, raw in zip(message_ids, found, strict=True):
+        for message_id in message_ids:
             path = os.path.join(directory, f"{group_id}_{message_id}.jpg")
             results.append(
-                await _save_photo(client, raw, message_id, path, max_bytes)
+                await _save_photo(
+                    client, found.get(message_id), message_id, path, max_bytes
+                )
             )
         return results
     finally:
@@ -125,75 +128,43 @@ async def _download_variant(
     """Download one size of the message's photo to ``path`` and return
     its byte count, or ``None`` when the file turns out larger than
     ``max_bytes``. ``path`` is only touched by a complete download."""
-    no_data = f"Telegram sent no data for the photo of message {raw.id}."
-    leftovers: set[str] = set()
+    temp_path: str | None = None
     try:
-        # Hidden, so a partial file is not taken for a photo. Without the
-        # extension Telethon appends one and writes to another file.
+        # Hidden, so a partial file is not taken for a photo. Created
+        # first: Telethon writes to an existing file under its own name.
         fd, temp_path = tempfile.mkstemp(
             dir=os.path.dirname(path), prefix=".", suffix=".jpg"
         )
-        leftovers.add(temp_path)
         os.close(fd)
         # Named by type string: Telethon ignores a ``PhotoSizeProgressive``
         # passed as an object and then downloads nothing.
-        written = await client.download_media(
-            raw, file=temp_path, thumb=variant_type
-        )
-        if written is None:
-            raise DownloadError(no_data)
-        leftovers.add(written)
-        size = os.path.getsize(written)
+        await client.download_media(raw, file=temp_path, thumb=variant_type)
+        size = os.path.getsize(temp_path)
         if size == 0:
-            raise DownloadError(no_data)
+            raise DownloadError(
+                f"Telegram sent no data for the photo of message {raw.id}."
+            )
         if size > max_bytes:
-            saved_bytes = None
-        else:
-            # Swaps a symlink at ``path`` instead of writing through it.
-            os.replace(written, path)
-            saved_bytes = size
-    except BaseException as exc:
-        failure = exc
+            # Deleted here, where a failure counts: the cleanup below
+            # would let a file that stays be reported as skipped.
+            os.unlink(temp_path)
+            return None
+        # Swaps a symlink at ``path`` instead of writing through it.
+        os.replace(temp_path, path)
+        return size
+    except OSError as exc:
         # Covers a dropped connection too: ``ConnectionError`` and
         # ``TimeoutError`` are ``OSError`` subclasses.
-        if isinstance(exc, OSError):
-            failure = DownloadError(
-                f"Cannot save the photo of message {raw.id}: "
-                f"{str(exc) or type(exc).__name__}"
-            )
-        undeleted = _delete_files(leftovers)
-        if undeleted is not None:
-            # A note, so the failure keeps its own type and text. Set
-            # by hand: ``add_note`` needs Python 3.11.
-            failure.__notes__ = [
-                *getattr(failure, "__notes__", ()),
-                f"(a temporary file for the photo of message {raw.id} "
-                f"was left behind: {undeleted})",
-            ]
-        if failure is exc:
-            raise
-        raise failure from exc
-    undeleted = _delete_files(leftovers)
-    if undeleted is not None:
         raise DownloadError(
-            f"Cannot delete a temporary file for the photo of message "
-            f"{raw.id}: {undeleted}"
-        ) from undeleted
-    return saved_bytes
-
-
-def _delete_files(paths: Iterable[str]) -> OSError | None:
-    """Delete each of ``paths`` that still exists and return the first
-    failure, or ``None`` when every file is gone."""
-    failure = None
-    for path in paths:
-        try:
-            os.unlink(path)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            failure = failure or exc
-    return failure
+            f"Cannot save the photo of message {raw.id}: "
+            f"{str(exc) or type(exc).__name__}"
+        ) from exc
+    finally:
+        if temp_path is not None:
+            # Best effort, so a failure here never replaces the error
+            # that ended the download.
+            with contextlib.suppress(OSError):
+                os.unlink(temp_path)
 
 
 def _skipped(message_id: int, reason: str) -> dict[str, Any]:
@@ -232,7 +203,7 @@ def _declared_bytes(variant: Any) -> int | None:
     if isinstance(variant, _tl.PhotoSize):
         return variant.size
     if isinstance(variant, _tl.PhotoSizeProgressive):
-        return max(variant.sizes)
+        return max(variant.sizes, default=None)
     if isinstance(variant, _tl.PhotoCachedSize):
         return len(variant.bytes)
     return None

@@ -10,7 +10,7 @@ import click
 from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Message
-from ._message import to_message
+from ._message import messages_by_id, to_message
 from ._peer import marked_peer_id, message_link_base
 from ._resolve import resolve
 
@@ -45,13 +45,13 @@ async def _collect_by_id(group: str, message_ids: list[int]) -> list[Message]:
         entity = await resolve(client, group)
         group_id = marked_peer_id(entity)
         link_base = message_link_base(entity)
-        # For a list of ids Telethon answers in request order, with
-        # ``None`` in place of each id that does not exist.
-        found = await client.get_messages(entity, ids=message_ids)
+        found = messages_by_id(
+            await client.get_messages(entity, ids=message_ids)
+        )
         return [
-            to_message(raw, group_id, link_base=link_base)
-            for raw in found
-            if raw is not None
+            to_message(found[message_id], group_id, link_base=link_base)
+            for message_id in message_ids
+            if message_id in found
         ]
     finally:
         await client.disconnect()

@@ -91,8 +91,8 @@ def _fake_client_for(
     client.is_user_authorized = AsyncMock(return_value=True)
     client.get_entity = AsyncMock(return_value=_entity())
     if command in ("get", "download"):
-        # For a list of ids Telethon answers in request order, with
-        # ``None`` in place of each id that does not exist.
+        # The usual answer for a list of ids: request order, ``None``
+        # in place of each id that does not exist.
         by_id = {m.id: m for m in stored}
 
         async def get_messages(_entity: Any, *, ids: list[int]) -> list[Any]:

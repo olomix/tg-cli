@@ -50,7 +50,7 @@ def message_link_base(entity: Any) -> str | None:
     ``https://t.me/c/<bare id>`` for a private channel or supergroup,
     and ``None`` for a basic group, which has no message permalinks.
     """
-    username = _public_username(entity)
+    username = public_username(entity)
     if username:
         return f"https://t.me/{username}"
     if _is_channel(entity):
@@ -58,11 +58,13 @@ def message_link_base(entity: Any) -> str | None:
     return None
 
 
-def _public_username(entity: Any) -> str | None:
+def public_username(entity: Any) -> str | None:
+    """Return the ``@username`` of a user, group or channel without the
+    ``@``, or ``None`` when it has none."""
     username = getattr(entity, "username", None)
     if username:
         return str(username)
-    # A group with several usernames can leave ``username`` empty and
+    # A peer with several usernames can leave ``username`` empty and
     # list them only here.
     for entry in getattr(entity, "usernames", None) or []:
         if getattr(entry, "active", False) and entry.username:

@@ -257,13 +257,15 @@ downloading or writing ends the command with a JSON error and a
 non-zero exit: `DownloadError` for a dropped connection, an empty
 download or a disk error, `TelegramError` or `FloodWaitError` when
 Telegram refuses the request. Photos saved before the failure stay in
-place. If a temporary file could not be deleted either, the same error
-names the file left behind.
+place.
 
 Each photo is downloaded under a temporary hidden name inside `DIR`
 and renamed into place once complete, so a partial file never carries
-the final name. A symlink already sitting at the target name is
-replaced, not followed, so nothing is written outside `DIR`.
+the final name. A download that fails or is interrupted removes its
+temporary file; only if that cannot be done either does a hidden
+`.jpg` file stay behind in `DIR`. A symlink already sitting at the
+target name is replaced, not followed, so nothing is written outside
+`DIR`.
 
 ### Message JSON shape
 
@@ -289,8 +291,8 @@ object:
 }
 ```
 
-- `sender_username` — the sender's `@username` without the `@`, or
-  null.
+- `sender_username` — the sender's `@username` without the `@` (the
+  first active one when the sender has several), or null.
 - `topic_id` — the id of the forum topic the message was posted in;
   null outside forum topics. Messages in a forum's General topic are
   null too, and so is the service message that creates a topic.

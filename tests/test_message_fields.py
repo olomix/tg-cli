@@ -122,6 +122,44 @@ def test_sender_username_is_none_when_sender_has_no_username() -> None:
     assert msg.sender_username is None
 
 
+def test_sender_username_falls_back_to_an_active_entry_of_usernames() -> None:
+    sender = SimpleNamespace(
+        first_name="Alice",
+        last_name=None,
+        username=None,
+        usernames=[
+            types.Username(username="retired", active=False),
+            types.Username(username="alice_main", active=True),
+            types.Username(username="alice_alt", active=True),
+        ],
+    )
+    msg = to_message(_raw(sender=sender, sender_id=42), _GROUP_ID)
+    assert msg.sender_username == "alice_main"
+    assert msg.sender_name == "Alice"
+
+
+def test_sender_username_prefers_username_over_usernames() -> None:
+    sender = SimpleNamespace(
+        first_name="Alice",
+        last_name=None,
+        username="alice",
+        usernames=[types.Username(username="alice_alt", active=True)],
+    )
+    msg = to_message(_raw(sender=sender, sender_id=42), _GROUP_ID)
+    assert msg.sender_username == "alice"
+
+
+def test_sender_username_ignores_inactive_usernames() -> None:
+    sender = SimpleNamespace(
+        first_name="Alice",
+        last_name=None,
+        username=None,
+        usernames=[types.Username(username="retired", active=False)],
+    )
+    msg = to_message(_raw(sender=sender, sender_id=42), _GROUP_ID)
+    assert msg.sender_username is None
+
+
 def test_sender_username_is_none_when_sender_lacks_the_attribute() -> None:
     sender = SimpleNamespace(title="Channel Bot")
     msg = to_message(_raw(sender=sender, sender_id=10), _GROUP_ID)

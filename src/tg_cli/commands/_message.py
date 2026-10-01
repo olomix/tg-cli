@@ -6,6 +6,7 @@ output shape is identical regardless of how the message was fetched.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,6 +14,7 @@ from telethon import utils as _utils
 from telethon.tl import types as _tl
 
 from ..models import Message
+from ._peer import public_username
 
 
 def to_message(
@@ -56,7 +58,7 @@ def to_message(
         text=_message_text(raw),
         reply_to_id=_reply_to_id(raw),
         group_id=group_id,
-        sender_username=_sender_username(sender),
+        sender_username=public_username(sender),
         topic_id=topic_id,
         media_kind=_media_kind(raw),
         grouped_id=_grouped_id(raw),
@@ -64,6 +66,15 @@ def to_message(
         forward=_forward(raw),
         link=_link(link_base, topic_id, message_id),
     )
+
+
+def messages_by_id(found: Iterable[Any]) -> dict[int, Any]:
+    """Index the answer to a fetch by ids, without its ``None`` entries.
+
+    The answer cannot be paired with the request by position: Telegram
+    may leave an id it does not have out of the answer altogether.
+    """
+    return {raw.id: raw for raw in found if raw is not None}
 
 
 def _assume_utc(date: datetime) -> datetime:
@@ -103,12 +114,7 @@ def _sender_display_name(sender: Any) -> str | None:
     ]
     if parts:
         return " ".join(parts)
-    return _sender_username(sender)
-
-
-def _sender_username(sender: Any) -> str | None:
-    username = getattr(sender, "username", None)
-    return str(username) if username else None
+    return public_username(sender)
 
 
 def _topic_id(raw: Any) -> int | None:

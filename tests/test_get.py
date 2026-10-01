@@ -56,8 +56,8 @@ def _fake_client(
     stored: Iterable[SimpleNamespace] = (),
     authorized: bool = True,
 ) -> MagicMock:
-    """Client whose ``get_messages`` answers like Telethon does for a
-    list of ids: request order, ``None`` for an id that does not exist."""
+    """Client whose ``get_messages`` gives the usual answer for a list
+    of ids: request order, ``None`` for an id that does not exist."""
     by_id = {m.id: m for m in stored}
 
     async def get_messages(_entity: Any, *, ids: list[int]) -> list[Any]:
@@ -248,3 +248,42 @@ def test_get_unknown_group_reports_group_not_found() -> None:
     assert payload["type"] == "GroupNotFoundError"
     client.get_messages.assert_not_called()
     client.disconnect.assert_awaited_once()
+
+
+# --- pairing answers with ids --------------------------------------------
+
+
+def _answer(client: MagicMock, *messages: Any) -> None:
+    """Make ``get_messages`` return exactly ``messages``, whatever ids
+    it is asked for."""
+    client.get_messages = AsyncMock(return_value=list(messages))
+
+
+def test_get_skips_an_id_telegram_left_out_of_its_answer() -> None:
+    client = _fake_client(entity=_entity(1))
+    _answer(client, _msg(5), _msg(7))
+    result = _invoke(client, "1", "5", "6", "7")
+    assert _output_ids(result) == [5, 7]
+
+
+def test_get_keeps_the_request_order_when_the_answer_has_another() -> None:
+    client = _fake_client(entity=_entity(1))
+    _answer(client, _msg(5), None, _msg(7))
+    result = _invoke(client, "1", "7", "6", "5")
+    assert _output_ids(result) == [7, 5]
+
+
+@pytest.mark.parametrize("copies", [1, 2])
+def test_get_returns_an_id_requested_twice_twice(copies: int) -> None:
+    client = _fake_client(entity=_entity(1))
+    _answer(client, *[_msg(5)] * copies, _msg(6))
+    result = _invoke(client, "1", "5", "6", "5")
+    assert _output_ids(result) == [5, 6, 5]
+
+
+def test_get_prints_an_empty_array_for_an_empty_answer() -> None:
+    client = _fake_client(entity=_entity(1))
+    _answer(client)
+    result = _invoke(client, "1", "5", "6")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == []

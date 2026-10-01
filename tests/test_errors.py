@@ -133,27 +133,6 @@ def test_handle_errors_passes_through_unknown_exceptions() -> None:
     assert result.stderr == ""
 
 
-def test_handle_errors_appends_notes_and_keeps_the_error_type() -> None:
-    import click
-
-    @click.command()
-    @handle_errors
-    def cmd() -> None:
-        exc = FloodWaitError(request=None, capture=7)
-        exc.__notes__ = ["(a file was left behind: /tmp/x)"]
-        raise exc
-
-    result = CliRunner().invoke(cmd, [])
-    assert result.exit_code == 1
-    assert _parse_error(result.stderr) == {
-        "error": (
-            "Telegram flood wait; retry after 7 seconds. "
-            "(a file was left behind: /tmp/x)"
-        ),
-        "type": "FloodWaitError",
-    }
-
-
 def test_classify_maps_download_error() -> None:
     assert _classify(DownloadError("disk full")) == (
         "disk full",
