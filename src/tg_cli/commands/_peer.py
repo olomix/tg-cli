@@ -38,9 +38,40 @@ def marked_peer_id(entity: Any) -> int:
     ``telethon.utils.get_peer_id``.
     """
     bare = int(entity.id)
-    if isinstance(entity, _CHANNEL_TYPES) or _looks_like_channel(entity):
+    if _is_channel(entity):
         return _CHANNEL_ID_OFFSET - bare
     return -bare
+
+
+def message_link_base(entity: Any) -> str | None:
+    """Return the ``t.me`` prefix shared by every message link of a group.
+
+    ``https://t.me/<username>`` for a public group or channel,
+    ``https://t.me/c/<bare id>`` for a private channel or supergroup,
+    and ``None`` for a basic group, which has no message permalinks.
+    """
+    username = _public_username(entity)
+    if username:
+        return f"https://t.me/{username}"
+    if _is_channel(entity):
+        return f"https://t.me/c/{int(entity.id)}"
+    return None
+
+
+def _public_username(entity: Any) -> str | None:
+    username = getattr(entity, "username", None)
+    if username:
+        return str(username)
+    # A group with several usernames can leave ``username`` empty and
+    # list them only here.
+    for entry in getattr(entity, "usernames", None) or []:
+        if getattr(entry, "active", False) and entry.username:
+            return str(entry.username)
+    return None
+
+
+def _is_channel(entity: Any) -> bool:
+    return isinstance(entity, _CHANNEL_TYPES) or _looks_like_channel(entity)
 
 
 def _looks_like_channel(entity: Any) -> bool:

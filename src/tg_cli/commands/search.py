@@ -12,7 +12,7 @@ from ..client import make_client
 from ..errors import AuthError, handle_errors
 from ..models import Message
 from ._message import to_message
-from ._peer import marked_peer_id
+from ._peer import marked_peer_id, message_link_base
 from ._resolve import resolve
 from ._time import parse as parse_time
 
@@ -60,6 +60,7 @@ async def _run_search(
             raise AuthError()
         entity = await resolve(client, group)
         group_id = marked_peer_id(entity)
+        link_base = message_link_base(entity)
         collected: list[Message] = []
         # Iterate newest-first so ``--limit`` caps to the most recent
         # matches (not the earliest). With ``--since``, stop when a
@@ -71,7 +72,7 @@ async def _run_search(
         ):
             if offset_date is not None and _is_older_than(raw, offset_date):
                 break
-            collected.append(to_message(raw, group_id))
+            collected.append(to_message(raw, group_id, link_base=link_base))
         return collected
     finally:
         await client.disconnect()

@@ -15,8 +15,13 @@ from telethon.tl import types as _tl
 from ..models import Message
 
 
-def to_message(raw: Any, group_id: int) -> Message:
+def to_message(
+    raw: Any, group_id: int, *, link_base: str | None = None
+) -> Message:
     """Build a :class:`Message` from a Telethon ``Message`` object.
+
+    ``link_base`` is the group's permalink prefix; without it the
+    message gets no ``link``.
 
     Service messages and anonymous-admin edge cases can produce missing
     or non-integer attributes (e.g. ``sender_id`` set to a ``PeerChannel``
@@ -40,8 +45,11 @@ def to_message(raw: Any, group_id: int) -> Message:
     else:
         date = _assume_utc(date)
 
+    message_id = int(getattr(raw, "id", 0))
+    topic_id = _topic_id(raw)
+
     return Message(
-        id=int(getattr(raw, "id", 0)),
+        id=message_id,
         date=date,
         sender_id=sender_id,
         sender_name=_sender_display_name(sender),
@@ -49,11 +57,12 @@ def to_message(raw: Any, group_id: int) -> Message:
         reply_to_id=_reply_to_id(raw),
         group_id=group_id,
         sender_username=_sender_username(sender),
-        topic_id=_topic_id(raw),
+        topic_id=topic_id,
         media_kind=_media_kind(raw),
         grouped_id=_grouped_id(raw),
         urls=_urls(raw),
         forward=_forward(raw),
+        link=_link(link_base, topic_id, message_id),
     )
 
 
@@ -183,3 +192,13 @@ def _forward(raw: Any) -> dict[str, Any] | None:
         "from_name": header.from_name,
         "date": None if date is None else _assume_utc(date).isoformat(),
     }
+
+
+def _link(
+    link_base: str | None, topic_id: int | None, message_id: int
+) -> str | None:
+    if link_base is None:
+        return None
+    if topic_id is None:
+        return f"{link_base}/{message_id}"
+    return f"{link_base}/{topic_id}/{message_id}"

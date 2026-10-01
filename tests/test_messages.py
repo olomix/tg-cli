@@ -240,7 +240,7 @@ def test_messages_outputs_contract_shape() -> None:
             "grouped_id": None,
             "urls": [],
             "forward": None,
-            "link": None,
+            "link": "https://t.me/c/1234567890/1",
         },
         {
             "id": 2,
@@ -256,10 +256,36 @@ def test_messages_outputs_contract_shape() -> None:
             "grouped_id": None,
             "urls": [],
             "forward": None,
-            "link": None,
+            "link": "https://t.me/c/1234567890/2",
         },
     ]
     client.get_entity.assert_awaited_once_with("@dev")
+
+
+def test_messages_on_public_group_emits_username_links() -> None:
+    entity = SimpleNamespace(
+        id=1234567890, title="Dev", megagroup=True, username="dev_chat"
+    )
+    history = [
+        _msg(
+            id=2,
+            text="reply",
+            date=datetime(2026, 4, 17, 10, 5, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=1,
+            text="hello",
+            date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
+        ),
+    ]
+    client = _fake_client(entity=entity, history=history)
+    result = _invoke(client, "@dev_chat")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert [m["link"] for m in data] == [
+        "https://t.me/dev_chat/1",
+        "https://t.me/dev_chat/2",
+    ]
 
 
 def test_messages_without_since_fetches_newest_without_reverse() -> None:

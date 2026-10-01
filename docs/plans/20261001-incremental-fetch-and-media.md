@@ -389,14 +389,14 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `tests/test_search.py`
 - Modify: `tests/test_thread.py`
 
-- [ ] write failing tests in `tests/test_peer.py` for `message_link_base`: public supergroup; public broadcast channel; entity with empty `username` and an active entry in `usernames`; private supergroup (uses the bare `entity.id`, not a marked id); basic group gives null
-- [ ] write failing tests in `tests/test_message_fields.py` for `link`: base plus id; base plus topic id plus id when `topic_id` is set; private base with a topic; null when no base is passed
-- [ ] implement `message_link_base(entity)` in `_peer.py`, reusing the existing channel detection
-- [ ] add a keyword argument `link_base: str | None = None` to `to_message` and build `link` from it
-- [ ] pass `message_link_base(entity)` to `to_message` in `messages.py`, `search.py` and `thread.py` (both call sites in `thread.py`)
-- [ ] write a test in `tests/test_messages.py` that `tg messages` on an entity with a username emits `link` values of the public shape
-- [ ] update the expected `link` in the three contract tests: their entity is a private supergroup with bare id `1234567890`, so each message gets `https://t.me/c/1234567890/<its id>` (`tests/test_messages.py`, `tests/test_search.py`, and the root and both replies in `tests/test_thread.py`)
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 6
+- [x] write failing tests in `tests/test_peer.py` for `message_link_base`: public supergroup; public broadcast channel; entity with empty `username` and an active entry in `usernames`; private supergroup (uses the bare `entity.id`, not a marked id); basic group gives null
+- [x] write failing tests in `tests/test_message_fields.py` for `link`: base plus id; base plus topic id plus id when `topic_id` is set; private base with a topic; null when no base is passed
+- [x] implement `message_link_base(entity)` in `_peer.py`, reusing the existing channel detection
+- [x] add a keyword argument `link_base: str | None = None` to `to_message` and build `link` from it
+- [x] pass `message_link_base(entity)` to `to_message` in `messages.py`, `search.py` and `thread.py` (both call sites in `thread.py`)
+- [x] write a test in `tests/test_messages.py` that `tg messages` on an entity with a username emits `link` values of the public shape
+- [x] update the expected `link` in the three contract tests: their entity is a private supergroup with bare id `1234567890`, so each message gets `https://t.me/c/1234567890/<its id>` (`tests/test_messages.py`, `tests/test_search.py`, and the root and both replies in `tests/test_thread.py`)
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 6
 
 ### Task 6: Add the id range to `tg messages`
 

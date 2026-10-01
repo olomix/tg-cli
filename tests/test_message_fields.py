@@ -463,3 +463,43 @@ def test_forward_date_is_none_when_the_header_has_no_date() -> None:
     forward = to_message(_raw(fwd_from=header), _GROUP_ID).forward
     assert forward is not None
     assert forward["date"] is None
+
+
+def test_link_is_the_base_followed_by_the_message_id() -> None:
+    msg = to_message(_raw(id=7), _GROUP_ID, link_base="https://t.me/dev")
+    assert msg.link == "https://t.me/dev/7"
+
+
+def test_link_includes_the_topic_id_of_a_forum_message() -> None:
+    header = _reply_header(reply_to_top_id=42, forum_topic=True)
+    msg = to_message(
+        _raw(id=7, reply_to=header), _GROUP_ID, link_base="https://t.me/dev"
+    )
+    assert msg.link == "https://t.me/dev/42/7"
+
+
+def test_link_of_a_private_forum_message_includes_the_topic_id() -> None:
+    header = _reply_header(reply_to_top_id=42, forum_topic=True)
+    msg = to_message(
+        _raw(id=7, reply_to=header),
+        _GROUP_ID,
+        link_base="https://t.me/c/1234567890",
+    )
+    assert msg.link == "https://t.me/c/1234567890/42/7"
+
+
+def test_link_of_a_private_message_outside_a_topic() -> None:
+    msg = to_message(
+        _raw(id=7), _GROUP_ID, link_base="https://t.me/c/1234567890"
+    )
+    assert msg.link == "https://t.me/c/1234567890/7"
+
+
+def test_link_is_none_when_no_base_is_passed() -> None:
+    assert to_message(_raw(id=7), _GROUP_ID).link is None
+
+
+def test_link_is_none_when_the_base_is_none() -> None:
+    header = _reply_header(reply_to_top_id=42, forum_topic=True)
+    msg = to_message(_raw(id=7, reply_to=header), _GROUP_ID, link_base=None)
+    assert msg.link is None

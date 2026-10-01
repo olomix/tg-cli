@@ -137,10 +137,14 @@ def test_thread_includes_root_first_then_chronological_replies() -> None:
         "grouped_id": None,
         "urls": [],
         "forward": None,
-        "link": None,
+        "link": "https://t.me/c/1234567890/10",
     }
     assert data[1]["reply_to_id"] == 10
     assert data[2]["reply_to_id"] == 10
+    assert [m["link"] for m in data[1:]] == [
+        "https://t.me/c/1234567890/11",
+        "https://t.me/c/1234567890/12",
+    ]
 
 
 def test_thread_passes_reply_to_and_reverse_to_iter_messages() -> None:

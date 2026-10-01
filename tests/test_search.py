@@ -222,7 +222,7 @@ def test_search_output_matches_messages_shape() -> None:
             "grouped_id": None,
             "urls": [],
             "forward": None,
-            "link": None,
+            "link": "https://t.me/c/1234567890/7",
         }
     ]
 
