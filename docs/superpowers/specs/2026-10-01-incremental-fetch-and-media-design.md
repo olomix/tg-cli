@@ -47,11 +47,21 @@ Rules:
 - `--after-id` and `--since` are mutually exclusive: usage error, exit 2.
 - `--through-id` without `--after-id`: usage error, exit 2.
 - `--through-id` lower than or equal to `--after-id`: empty array, exit 0.
+- Both take integers of 0 or more; anything else is a usage error.
+  `--after-id 0` reads from the first message of the group.
+- `--after-id` without `--through-id` reads up to the newest message.
 - `--limit` keeps its default of 100.
 
 Telethon mapping: `iter_messages(entity, limit=limit, min_id=N,
 max_id=M + 1, reverse=True)`. Both bounds are exclusive in Telethon,
-hence `M + 1`.
+hence `M + 1`. In reverse mode Telethon starts after `min_id` and stops
+at the first id at or above `max_id`
+(`telethon/client/messages.py`, `_MessagesIter`).
+
+The command consumes the iterator until it has `--limit` messages or the
+range is exhausted. Telethon pages the underlying requests itself, so a
+result shorter than `--limit` always means the range is drained, never
+that one server page happened to be short.
 
 Paging contract for callers, documented in README and the skill:
 
@@ -63,6 +73,11 @@ Paging contract for callers, documented in README and the skill:
 Ids are not contiguous; gaps are normal. Fixing `H` first means messages
 that arrive during the run are left for the next run instead of being
 half-read.
+
+A caller should treat a page as an error if its ids are not strictly
+increasing, fall outside `(C, H]`, or do not advance `C`. If the newest
+visible id is below a stored cursor (messages were deleted), there is
+nothing new; a cursor is never moved backwards.
 
 ## 2. New `Message` fields
 
@@ -85,9 +100,20 @@ carry no such header and get null.
 
 `media_kind` is one of `photo`, `video`, `gif`, `sticker`, `voice`,
 `audio`, `document`, `webpage`, `poll`, `other`, or null when the message
-has no media. It is derived from Telethon's convenience properties in
-that order of precedence (`gif` and `sticker` before `document`, since
-both are documents underneath).
+has no media. It is decided from the outer media type first, not from
+Telethon's convenience properties: `Message.photo` also returns the
+preview image of a link and the picture of a "chat photo changed"
+service message, which are not photo posts.
+
+- `MessageMediaWebPage` → `webpage`
+- `MessageMediaPhoto` → `photo`
+- `MessageMediaDocument` → by document attributes, first match wins:
+  `sticker`, `gif` (animated), `video`, `voice`, `audio`, else
+  `document`. `gif` precedes `video` because an animation carries both
+  attributes.
+- `MessageMediaPoll` → `poll`
+- any other media → `other`
+- no media, including service messages → null
 
 `urls` collects both plain URLs and the targets of text links
 (`MessageEntityTextUrl`). Entity offsets are UTF-16 code units, so plain
@@ -101,10 +127,14 @@ same form `group_id` uses.
 `link`:
 
 - public group or channel: `https://t.me/<username>/<id>`
-- private supergroup or channel: `https://t.me/c/<bare id>/<id>`
-- inside a forum topic: the topic id is inserted before the message id,
-  for example `https://t.me/<username>/<topic_id>/<id>`
+- public forum topic: `https://t.me/<username>/<topic_id>/<id>`
+- private supergroup or channel: `https://t.me/c/<channel id>/<id>`
+- private forum topic: `https://t.me/c/<channel id>/<topic_id>/<id>`
 - basic (non-super) group: null, since Telegram has no permalinks there
+
+`<channel id>` is the entity's bare id, taken from the entity itself. It
+is not derived by stripping the sign or prefix from a marked id. Shapes
+follow https://core.telegram.org/api/links#message-links.
 
 `to_message` currently receives only the group id. It gains the resolved
 entity's username so it can build `link`; the three existing callers pass
@@ -142,8 +172,21 @@ Output is a JSON array with one object per requested id, in order:
 
 `status` is `saved` or `skipped`. For skipped entries `path` and `bytes`
 are null and `reason` is `not_found`, `not_photo` or `too_large`. Skips
-do not make the command fail; it exits 0 whenever the group resolved and
-the session is authorised.
+are normal results and do not make the command fail.
+
+Operational failures do: a network or Telegram error during a download,
+or a disk error while writing, ends the command with a JSON error and a
+non-zero exit. Files already saved stay in place.
+
+Writing is defensive:
+
+- each file is downloaded to a temporary name in `DIR` and renamed into
+  place, so a partial file never carries the final name;
+- the size of the downloaded file is checked against `--max-bytes`; a
+  file that turns out larger than its declared size is deleted and
+  reported as `too_large`;
+- an existing entry at the target name that is a symlink is replaced,
+  not followed, so nothing is written outside `DIR`.
 
 This is the first command that writes anything. It writes only inside the
 directory the caller names. The README security note changes from
@@ -151,10 +194,12 @@ directory the caller names. The README security note changes from
 
 ## Errors
 
-No new error types. Existing mappings apply: `AuthError`,
+Existing mappings apply: `AuthError`,
 `GroupNotFoundError`, `AmbiguousGroupError`, `FloodWaitError`,
 `TelegramError`, and `UsageError` for the option conflicts above. An
-unwritable `--dir` surfaces as a usage error naming the path.
+unwritable `--dir` surfaces as a usage error naming the path. A disk
+error during `download` is reported as `{"type": "DownloadError"}`, the
+one new error type.
 
 ## Testing
 
@@ -166,15 +211,25 @@ Cases that must be covered:
 
 - `--after-id` passes `min_id`, `max_id` and `reverse=True`, returns the
   oldest `--limit` messages, and leaves the default path untouched.
-- Each option conflict yields a JSON usage error with exit 2.
-- Every new field: populated, absent (null or empty array), and the
-  precedence rules for `media_kind`.
+- Range boundaries with messages at ids N, N+1, M and M+1: only N+1
+  through M are returned. Also: gaps in ids, a final page of exactly
+  `--limit`, `--after-id 0`, and no `--through-id`.
+- Each option conflict and each non-integer or negative id yields a
+  JSON usage error with exit 2.
+- Every new field: populated, absent (null or empty array).
+- `media_kind`: a link preview with an image is `webpage`, a "chat photo
+  changed" service message is null, an animation is `gif`, a sticker is
+  `sticker`, plus one case per remaining value.
 - `urls` with a text link, a plain URL containing non-BMP characters
   before it, and a duplicate.
-- `link` for public, private, forum-topic and basic-group cases.
+- `link` for public, public-forum, private, private-forum and
+  basic-group cases.
 - `get`: order preserved, missing ids omitted, all ids missing.
 - `download`: saved, `not_found`, `not_photo`, `too_large`, variant
-  selection under `--max-bytes`, directory creation.
+  selection under `--max-bytes`, directory creation, a download that
+  exceeds its declared size, a network failure mid-way (non-zero exit,
+  no file under the final name), and a pre-existing symlink at the
+  target name.
 - Existing JSON shape tests are extended, not replaced: old fields keep
   their names, types and order.
 
