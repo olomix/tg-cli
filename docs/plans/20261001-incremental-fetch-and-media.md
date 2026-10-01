@@ -469,14 +469,15 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `tests/test_acceptance.py`
 - Modify: `tests/test_errors.py`
 
-- [ ] change the expected version in `tests/test_cli.py` to `0.2.0` and watch it fail
-- [ ] set the version to `0.2.0` in `pyproject.toml`, `src/tg_cli/__init__.py` and the `version_option` in `src/tg_cli/cli.py`
-- [ ] give `_fake_client_for` in `tests/test_acceptance.py` a per-command branch so `get_messages` returns a list for `get` and `download` and a single message for `thread`
-- [ ] extend `tests/test_acceptance.py`: `get` and `download` are registered and listed in `tg --help`; `messages`, `search`, `thread` and `get` each emit a message with exactly the fourteen documented keys
-- [ ] add an acceptance test that pages a mocked range: three calls of `tg messages --after-id C --through-id H --limit 2` over five messages return every message once, in order, and the last page is short
-- [ ] add an acceptance test: `tg download` over a mix of a photo, a text message and a missing id exits 0 with one entry per id
-- [ ] add `get` and `download` to the parametrised `module, argv` error tests in `tests/test_errors.py` (config, auth, flood wait), next to the existing commands
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 11
+- [x] change the expected version in `tests/test_cli.py` to `0.2.0` and watch it fail
+- [x] ➕ add a test in `tests/test_cli.py` that `tg_cli.__version__` and `pyproject.toml` carry `0.2.0` too, since `tg --version` only reads `cli.py`
+- [x] set the version to `0.2.0` in `pyproject.toml`, `src/tg_cli/__init__.py` and the `version_option` in `src/tg_cli/cli.py`
+- [x] give `_fake_client_for` in `tests/test_acceptance.py` a per-command branch so `get_messages` returns a list for `get` and `download` and a single message for `thread`
+- [x] extend `tests/test_acceptance.py`: `get` and `download` are registered and listed in `tg --help`; `messages`, `search`, `thread` and `get` each emit a message with exactly the fourteen documented keys
+- [x] add an acceptance test that pages a mocked range: three calls of `tg messages --after-id C --through-id H --limit 2` over five messages return every message once, in order, and the last page is short
+- [x] add an acceptance test: `tg download` over a mix of a photo, a text message and a missing id exits 0 with one entry per id
+- [x] add `get` and `download` to the parametrised `module, argv` error tests in `tests/test_errors.py` (config, auth, flood wait), next to the existing commands
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 11
 
 ### Task 11: Verify acceptance criteria
 

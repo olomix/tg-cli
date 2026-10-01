@@ -2,14 +2,15 @@
 
 Every command must emit ``{"error": "...", "type": "..."}`` to stderr
 and exit non-zero for all recognised failure modes. These tests are
-parametrised over the four data commands (``groups``/``messages``/
-``search``/``thread``) since they share the same decorator and
-exception surface.
+parametrised over the six data commands (``groups``/``messages``/
+``search``/``thread``/``get``/``download``) since they share the same
+decorator and exception surface.
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -161,7 +162,15 @@ DATA_COMMANDS = [
     ("messages", ("messages", "1")),
     ("search", ("search", "1", "q")),
     ("thread", ("thread", "1", "5")),
+    ("get", ("get", "1", "5")),
+    ("download", ("download", "--dir", "photos", "1", "5")),
 ]
+
+
+@pytest.fixture(autouse=True)
+def _scratch_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # ``tg download`` creates its relative ``--dir`` before it connects.
+    monkeypatch.chdir(tmp_path)
 
 
 @pytest.mark.parametrize("module,argv", DATA_COMMANDS)
