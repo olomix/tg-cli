@@ -28,14 +28,22 @@ def _raw(**overrides: Any) -> SimpleNamespace:
     return SimpleNamespace(**fields)
 
 
-def _reply_header(**fields: Any) -> SimpleNamespace:
-    header: dict[str, Any] = {
-        "reply_to_msg_id": None,
-        "reply_to_top_id": None,
-        "forum_topic": False,
-    }
-    header.update(fields)
-    return SimpleNamespace(**header)
+_LINK_BASE = "https://t.me/dev"
+
+
+def _reply_header(**fields: Any) -> types.MessageReplyHeader:
+    return types.MessageReplyHeader(**fields)
+
+
+def _telethon_message(**fields: Any) -> types.Message:
+    """A message of Telethon's own class, as the client returns it;
+    with ``action`` instead of ``message`` it is a service message."""
+    return types.Message(
+        id=7,
+        peer_id=types.PeerChannel(channel_id=1234567890),
+        date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
+        **fields,
+    )
 
 
 def _photo() -> types.Photo:
@@ -215,8 +223,49 @@ def test_topic_id_keeps_a_zero_top_id() -> None:
     header = _reply_header(
         reply_to_msg_id=99, reply_to_top_id=0, forum_topic=True
     )
-    msg = to_message(_raw(reply_to=header), _GROUP_ID)
+    msg = to_message(_raw(reply_to=header), _GROUP_ID, link_base=_LINK_BASE)
     assert msg.topic_id == 0
+    assert msg.link == "https://t.me/dev/0/7"
+
+
+def test_topic_id_is_none_when_a_forum_reply_names_no_message() -> None:
+    header = _reply_header(forum_topic=True)
+    msg = to_message(_raw(reply_to=header), _GROUP_ID, link_base=_LINK_BASE)
+    assert msg.topic_id is None
+    assert msg.link == "https://t.me/dev/7"
+
+
+def test_topic_id_and_link_of_a_telethon_forum_message() -> None:
+    raw = _telethon_message(
+        message="hello",
+        reply_to=types.MessageReplyHeader(
+            forum_topic=True, reply_to_msg_id=99, reply_to_top_id=42
+        ),
+    )
+    msg = to_message(raw, _GROUP_ID, link_base=_LINK_BASE)
+    assert (msg.topic_id, msg.reply_to_id) == (42, 99)
+    assert msg.link == "https://t.me/dev/42/7"
+
+
+def test_a_telethon_reply_to_a_story_has_no_topic_or_parent() -> None:
+    raw = _telethon_message(
+        message="hello",
+        reply_to=types.MessageReplyStoryHeader(
+            peer=types.PeerUser(user_id=42), story_id=3
+        ),
+    )
+    msg = to_message(raw, _GROUP_ID, link_base=_LINK_BASE)
+    assert (msg.topic_id, msg.reply_to_id) == (None, None)
+    assert msg.link == "https://t.me/dev/7"
+
+
+def test_a_telethon_topic_creation_message_links_without_a_topic() -> None:
+    raw = _telethon_message(
+        action=types.MessageActionTopicCreate(title="Releases", icon_color=0)
+    )
+    msg = to_message(raw, _GROUP_ID, link_base=_LINK_BASE)
+    assert (msg.text, msg.topic_id, msg.media_kind) == ("", None, None)
+    assert msg.link == "https://t.me/dev/7"
 
 
 def test_grouped_id_is_taken_from_the_message() -> None:

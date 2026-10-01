@@ -1,7 +1,8 @@
 """Telethon message → :class:`tg_cli.models.Message` conversion.
 
-Shared by ``tg messages`` / ``tg search`` / ``tg thread`` so the JSON
-output shape is identical regardless of how the message was fetched.
+Shared by ``tg messages`` / ``tg search`` / ``tg thread`` / ``tg get``
+so the JSON output shape is identical regardless of how the message was
+fetched.
 """
 
 from __future__ import annotations

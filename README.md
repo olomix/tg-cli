@@ -38,6 +38,20 @@ uv tool install .          # or: pipx install .
 
 This exposes a `tg` command on your `PATH`.
 
+To upgrade an existing install, update the checkout and reinstall:
+
+```bash
+cd ~/src/tg-cli
+git pull
+uv tool install --reinstall .
+tg --version               # tg, version 0.2.0
+```
+
+The id range of `tg messages` (`--after-id`, `--through-id`), `tg get`,
+`tg download` and the seven message fields from `sender_username` to
+`link` need 0.2.0 or later. An older `tg` rejects the new commands and
+options with a `UsageError` such as `No such command 'get'`.
+
 ## One-Time Setup
 
 1. Register a personal app at https://my.telegram.org/apps to obtain

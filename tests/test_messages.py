@@ -768,9 +768,12 @@ def test_messages_after_id_with_since_is_a_usage_error() -> None:
     client.connect.assert_not_called()
 
 
-def test_messages_through_id_without_after_id_is_a_usage_error() -> None:
+@pytest.mark.parametrize("through_id", ["200", "0"])
+def test_messages_through_id_without_after_id_is_a_usage_error(
+    through_id: str,
+) -> None:
     client = _fake_client(entity=_entity(1), history=[])
-    result = _invoke(client, "1", "--through-id", "200")
+    result = _invoke(client, "1", "--through-id", through_id)
     error = _usage_error(result)
     assert "--through-id" in error
     assert "--after-id" in error

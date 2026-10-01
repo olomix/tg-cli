@@ -4,12 +4,20 @@
 > Message JSON — Task 1 without the `Topic` dataclass, and all of
 > Task 2 — was delivered by the plan
 > `20261001-incremental-fetch-and-media.md` (release 0.2.0). Those
-> items are marked `[x]` below. Two details differ from the text here:
+> items are marked `[x]` below. Four details differ from the text here:
 > the key is emitted after `sender_username`, not next to
-> `reply_to_id`, and the extraction is a private helper `_topic_id` in
-> `commands/_message.py`, tested in `tests/test_message_fields.py`.
-> The `Topic` dataclass, `tg topics` and `tg messages --topic` are
-> still open.
+> `reply_to_id`; the extraction is a private helper `_topic_id` in
+> `commands/_message.py`, tested in `tests/test_message_fields.py`;
+> the service message that creates a topic is documented with
+> `topic_id` null (it carries no forum reply header), not with its own
+> id as "Edge cases" and the cross-reference table below expect; and
+> the `README.md` security note cited under "Scope boundaries" now
+> reads "read-only towards Telegram", since `tg download` writes
+> photos to a local directory.
+> The `topic_id` parts of Task 8 are delivered too: `README.md` and
+> `skill/SKILL.md` describe the field, including null outside forum
+> topics. The `Topic` dataclass, `tg topics`, `tg messages --topic`
+> and their documentation are still open.
 
 ## Overview
 
@@ -361,9 +369,9 @@ Note: existing `to_message()` callers instantiate `Message(...)` positionally or
 - Modify: `README.md`
 - Modify: `skill/SKILL.md`
 
-- [ ] `README.md`: add `tg topics` to the Commands section between `tg groups` and `tg messages`; document `--topic` flag on `tg messages`; add one-paragraph explanation of Telegram Topics (supergroups with Forum mode enabled); note that `topic_id` is `null` for non-forum messages
-- [ ] `README.md`: add a "Message JSON shape" note about the new `topic_id` field
-- [ ] `skill/SKILL.md`: mirror the above — short "Topics" section explaining when Claude should call `tg topics`, how to filter with `--topic`, and how to interpret `topic_id` on messages; add `tg topics` to the command index
+- [ ] `README.md`: add `tg topics` to the Commands section between `tg groups` and `tg messages`; document `--topic` flag on `tg messages`; add one-paragraph explanation of Telegram Topics (supergroups with Forum mode enabled); note that `topic_id` is `null` for non-forum messages (the `topic_id` note was delivered with 0.2.0; the rest is open)
+- [x] `README.md`: add a "Message JSON shape" note about the new `topic_id` field (delivered with 0.2.0)
+- [ ] `skill/SKILL.md`: mirror the above — short "Topics" section explaining when Claude should call `tg topics`, how to filter with `--topic`, and how to interpret `topic_id` on messages; add `tg topics` to the command index (how to interpret `topic_id` was delivered with 0.2.0; the rest is open)
 - [ ] `skill/SKILL.md`: add one-liner "For forum supergroups, always check `tg topics` before `tg messages` if the user refers to a channel-within-the-group by name"
 - [ ] move this plan to `docs/plans/completed/20260419-forum-topics-support.md`
 

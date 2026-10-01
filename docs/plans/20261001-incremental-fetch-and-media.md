@@ -71,14 +71,24 @@ work.
     are placeholders and are never downloaded: `PhotoStrippedSize`
     (blurred preview), `PhotoPathSize` (outline), `PhotoSizeEmpty`.
   - `client.download_media(message, file=path, thumb=<type string>)`
-    downloads one chosen variant and returns the path it wrote. The
+    downloads one chosen variant and returns the path it wrote. For a
+    `path` that is an existing file this is that same path
+    (`_get_proper_filename` leaves a valid existing path alone). The
     variant must be named by its `.type` string, not passed as an
     object (see `tg download` below).
   - In reverse mode Telethon starts the request at `min_id + 1`, so
     `min_id=2**31 - 1` overflows the 32-bit field and raises
     `struct.error`. `max_id` is only a local stop condition there and
-    is not serialised, so `max_id=2**31` (from `--through-id 2**31 - 1`)
-    is safe.
+    is not serialised, so passing `max_id=2**31` (from
+    `--through-id 2**31 - 1`) is safe in itself. The overflow comes
+    back one step later: after yielding id `2**31 - 1` Telethon asks
+    for the next page from `2**31`. The range loop therefore stops on
+    its own after its last id (see `tg messages` range options).
+  - `client.get_messages(entity, ids=[...])` usually answers in request
+    order with `None` for an id that does not exist, but that is not
+    guaranteed: `_IDsIter` copies what Telegram sends, and Telegram may
+    leave an invalid id out altogether, which makes the answer shorter
+    than the request. Answers are matched to ids by `message.id`.
 - **Exact-shape assertions**: `test_messages.py` (two tests),
   `test_search.py` and `test_thread.py` (one each) compare a whole
   message dict. The three contract tests use a sender with
@@ -190,7 +200,7 @@ new ones in the order above.
 
 | Field | Source |
 |---|---|
-| `sender_username` | `raw.sender.username`, else null |
+| `sender_username` | `raw.sender.username`, else the first active entry of `raw.sender.usernames`, else null (the rule `message_link_base` uses for groups) |
 | `topic_id` | reply header with `forum_topic` true: `reply_to_top_id`, falling back to `reply_to_msg_id` (test `is not None`, not truthiness); else null |
 | `grouped_id` | `raw.grouped_id`, else null |
 | `media_kind` | see below |
@@ -249,15 +259,19 @@ accepted and noted in the README.
   2147483647` itself is valid and must not be rejected.
 - Range path: `iter_messages(entity, limit=limit, min_id=after_id,
   reverse=True)`, plus `max_id=through_id + 1` when given. The result is
-  already oldest-first; it is not reversed.
+  already oldest-first; it is not reversed. The loop breaks after
+  yielding `--through-id`, or 2147483647 without it, so Telethon is
+  never asked for the page after the largest id (see Context).
 - Default path (no `--after-id`): the current code, untouched.
 
 ### `tg get`
 
-`client.get_messages(entity, ids=[...])` returns a list in request order
-with `None` for ids that do not exist. Output the found ones in that
-order. Ids are `click.IntRange(min=1, max=2**31 - 1)`,
-`nargs=-1, required=True`.
+`client.get_messages(entity, ids=[...])` returns a list that holds
+`None` for ids that do not exist and may leave ids out (see Context).
+Index the answer by `message.id` (`messages_by_id` in `_message.py`)
+and output the found messages in the order the ids were requested; an
+id requested twice is output twice. Ids are
+`click.IntRange(min=1, max=2**31 - 1)`, `nargs=-1, required=True`.
 
 For `get` and `download`, a negative group id needs the `--` separator,
 and after `--` every token is positional. Options must therefore come
@@ -274,17 +288,19 @@ first: `tg download --dir d -- -100123 5` works,
   `os.path.isdir(dir)` and `os.access(dir, os.W_OK | os.X_OK)`. Any
   failure is a `click.UsageError` naming the path, so an existing
   read-only directory is a usage error too, not a late download error.
-- Fetch: `client.get_messages(entity, ids=[...])`, which returns a list
-  in request order with `None` for ids that do not exist.
-- Per message: `None` → `not_found`; `media_kind != "photo"`, or a
+- Fetch: `client.get_messages(entity, ids=[...])`, indexed by
+  `message.id` as in `tg get`, so a file is never named after another
+  message's id.
+- Per requested id: no message with that id → `not_found`; `media_kind != "photo"`, or a
   `media.photo` that is not a `types.Photo` (expired or empty) →
   `not_photo`; otherwise choose the variant.
 - Variant choice: consider only the three real variants, matched by
   `isinstance`, each with its declared byte size: `PhotoSize` (`size`),
   `PhotoSizeProgressive` (the largest of `sizes`), `PhotoCachedSize`
   (`len(bytes)`). Everything else is ignored, including
-  `PhotoStrippedSize`, `PhotoPathSize`, `PhotoSizeEmpty` and any type
-  not known today, so an unexpected entry cannot raise. Pick the
+  `PhotoStrippedSize`, `PhotoPathSize`, `PhotoSizeEmpty`, a
+  `PhotoSizeProgressive` with an empty `sizes` list and any type not
+  known today, so an unexpected entry cannot raise. Pick the
   largest that fits `--max-bytes`. Real variants exist but none fits →
   `too_large`. No real variant at all → `not_photo`.
 - Download call: pass the chosen variant as its **type string**,
@@ -293,22 +309,27 @@ first: `tg download --dir d -- -100123 5` works,
   and the largest variant of a modern photo is usually progressive. The
   string form works for every size class.
 - Temporary file: `tempfile.mkstemp(dir=DIR, prefix=".", suffix=".jpg")`,
-  close the descriptor, pass that path as `file=`. The `.jpg` suffix
-  matters: Telethon appends an extension to a name that has none and
-  would then write somewhere else. Use the path `download_media`
-  returns.
-- After the download: a `None` return or a 0-byte file is a failure
-  (`DownloadError`), never `saved`. A file larger than `--max-bytes` is
-  deleted and reported `too_large`. Otherwise `os.replace` it to
-  `<group_id>_<message_id>.jpg`; `os.replace` swaps a symlink at the
-  target instead of writing through it.
-- Errors: the whole per-file sequence (download, stat, replace) sits in
-  one `try`. `OSError` → new `DownloadError` with a non-zero exit; this
-  includes `ConnectionError` and `TimeoutError` from a dropped
-  connection, which are `OSError` subclasses. Telethon RPC errors
-  propagate and already map to `TelegramError` or `FloodWaitError`. A
-  `finally` removes the temporary file if it still exists, on every
-  path.
+  close the descriptor, pass that path as `file=`. Telethon writes to
+  an existing file under the name it was given, so the temporary path
+  is the only one to track; the value `download_media` returns is not
+  used. A contract test runs Telethon's real photo download to pin
+  this.
+- After the download: a 0-byte temporary file (which is also what a
+  `None` return leaves) is a failure (`DownloadError`), never `saved`.
+  A file larger than `--max-bytes` is deleted and reported `too_large`;
+  if it cannot be deleted that is a `DownloadError`, never a skip.
+  Otherwise `os.replace` it to `<group_id>_<message_id>.jpg`;
+  `os.replace` swaps a symlink at the target instead of writing through
+  it.
+- Errors: the whole per-file sequence (create, download, stat, delete
+  or replace) sits in one `try`. `OSError` → new `DownloadError` with a
+  non-zero exit; this includes `ConnectionError` and `TimeoutError`
+  from a dropped connection, which are `OSError` subclasses. Telethon
+  RPC errors propagate and already map to `TelegramError` or
+  `FloodWaitError`. A `finally` removes the temporary file if it still
+  exists, on every path including an interrupt. That removal is best
+  effort: when it fails, the error that ended the download is the one
+  reported.
 - Result entry: `{"id", "status", "path", "bytes", "reason"}`; `path` is
   absolute.
 
@@ -456,7 +477,7 @@ first: `tg download --dir d -- -100123 5` works,
 - [x] write failing test: a download that turns out larger than `--max-bytes` is deleted and reported `too_large`
 - [x] write failing tests for failures mid-download, each asserting no file under the final name, no leftover temporary file, and that a file saved earlier in the same run stays: an `OSError` and a `ConnectionError` give `DownloadError`; a Telethon `RPCError` gives `TelegramError`; all exit non-zero
 - [x] write failing tests for the target name: a symlink already there is replaced and the file it pointed to is unchanged; an existing regular file is overwritten
-- [x] implement the write path from Technical Details: `mkstemp` with the `.jpg` suffix, use of the returned path, the empty and oversize checks, `os.replace`, one `try` around the per-file sequence with `except OSError` and a `finally` that removes the temporary file
+- [x] implement the write path from Technical Details: `mkstemp` with the `.jpg` suffix, use of the returned path, the empty and oversize checks, `os.replace`, one `try` around the per-file sequence with `except OSError` and a `finally` that removes the temporary file (the returned path is no longer used; see Task 13)
 - [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 10
 
 ### Task 10: Bump the version and extend the acceptance tests
@@ -485,7 +506,7 @@ first: `tg download --dir d -- -100123 5` works,
 - [x] verify backward compatibility: `tg messages`, `tg search` and `tg thread` without new options behave as before; the first seven keys of every message are unchanged in name, type and order (the 235 tests from `main` pass against this code once the seven appended keys are hidden; only the version assertion differs)
 - [x] verify every case listed in the spec's Testing section has a test
 - [x] ➕ add the tests the verification found missing: `link` on the `--after-id` path of `tg messages` (dropping it there failed no test), a negative message id for `get` and `download`, and `AmbiguousGroupError` for `get` and `download`
-- [x] run the full suite: `uv run pytest -q` (427 passed)
+- [x] run the full suite: `uv run pytest -q` (427 passed at this point; 458 after the review fixes in Task 13)
 - [x] run lint: `uv run ruff check src tests`
 - [x] run coverage: `uv run pytest --cov=tg_cli --cov-report=term-missing` - `_message.py`, `get.py`, `download.py` and the range path in `messages.py` at 90% or above (`_message.py` 99%, `get.py` 100%, `download.py` 100%, `messages.py` 97% with every range-path line covered)
 
@@ -502,6 +523,23 @@ first: `tg download --dir d -- -100123 5` works,
 - [x] `skill/SKILL.md`: mirror the README changes; add `get` and `download` to the command list, the new fields to the message shape, `DownloadError` to the known error types, and a short "read everything since last time" workflow using the paging contract; revise the "read-only" wording in "When to Use"
 - [x] `docs/plans/20260419-forum-topics-support.md`: note at the top that the `topic_id` field (its Tasks 1 and 2, without the `Topic` dataclass) was delivered by this plan, and mark those items accordingly
 - [x] move this plan to `docs/plans/completed/` (deferred - the executor moves the plan after the review phases)
+
+### ➕ Task 13: Review fixes
+
+Found by the peer and phase reviews after Task 12; each fix has a test
+that was watched failing first, or, for a test of behaviour that was
+already right, failing against a mutated copy of the code.
+
+- [x] ➕ stop the range loop of `tg messages` at its last id, so Telethon is not asked for the page after id 2147483647 (f036d99)
+- [x] ➕ fail with `DownloadError` instead of reporting `too_large` when an oversize file cannot be deleted (f036d99)
+- [x] ➕ clarify in `README.md`, `skill/SKILL.md` and the spec that an empty page ends an id range, that only a non-null `grouped_id` within one group marks an album, and that an oversize download is `too_large` (59a023f, 58045a8)
+- [x] ➕ name the temporary file a failed download could not delete in the error, through exception notes appended by `handle_errors` (58045a8). Withdrawn by the next review as too much machinery for a double fault: the notes hook is gone and that cleanup is best effort (485d5aa)
+- [x] ➕ match the answer of `get_messages` to the requested ids by message id in `tg get` and `tg download`, with tests for an id left out, another order, an id requested twice and an empty answer (3590022)
+- [x] ➕ track only the temporary path in the download write path, drop the tests of a renamed download, and add a contract test over Telethon's real photo download, an interrupt test and a closed-descriptor test (485d5aa)
+- [x] ➕ treat a `PhotoSizeProgressive` with no sizes as a placeholder, and read `sender_username` from `sender.usernames` when `sender.username` is empty (789705e)
+- [x] ➕ add tests: a lone `--through-id 0`, a writable but non-searchable `--dir`, a forum reply header naming no message, the link of a topic id of 0, real `types.Message` and `types.MessageReplyHeader` objects through `to_message`, and the migrated-chat redirect of `tg get` and `tg download` (29ec564)
+- [x] ➕ bring this plan, the spec, the forum topics plan and the stale docstrings in line with the code, and document upgrading to 0.2.0 in `README.md` and `skill/SKILL.md`
+- [x] run `uv run pytest -q` (458 passed) and `uv run ruff check src tests`
 
 ## Post-Completion
 

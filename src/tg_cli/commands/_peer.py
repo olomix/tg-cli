@@ -1,4 +1,4 @@
-"""Marked-peer-id helper.
+"""Peer helpers: marked peer ids, usernames and message link prefixes.
 
 Telethon's ``Chat``/``Channel`` entities expose a *bare* positive ``id``,
 but the JSON contract in ``README.md`` and ``skill/SKILL.md`` documents
@@ -17,6 +17,10 @@ We ``isinstance``-check against both ``telethon.tl.types.Channel`` and
 or otherwise can't access; it lives in the same ``-1e12`` marked-id
 space) and fall back to flag inspection so the helper still works
 against the ``SimpleNamespace`` mocks the unit tests use.
+
+``message_link_base`` gives the ``t.me`` prefix of a group's message
+permalinks and ``public_username`` a peer's ``@username``; every
+command that emits messages uses both.
 """
 
 from __future__ import annotations

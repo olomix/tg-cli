@@ -345,3 +345,9 @@ Keep `--limit` bounded (default 100) to avoid rate limits. If a
   it, or include it in any tool output.
 - If `tg` is not installed, tell the user to run
   `uv tool install .` (or `pipx install .`) from the repo.
+- `tg get`, `tg download`, `--after-id` / `--through-id` and the
+  message fields from `sender_username` to `link` need `tg` 0.2.0 or
+  later (`tg --version`). If `tg` answers with a `UsageError` such as
+  `No such command 'get'` or `No such option: --after-id`, the
+  installed tool is older: tell the user to run
+  `uv tool install --reinstall .` from the repo.

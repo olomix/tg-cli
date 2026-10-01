@@ -71,6 +71,18 @@ def _sample_msg(id: int = 1, media: Any = None) -> SimpleNamespace:
     )
 
 
+def _photo_media() -> types.MessageMediaPhoto:
+    photo = types.Photo(
+        id=1,
+        access_hash=2,
+        file_reference=b"",
+        date=None,
+        sizes=[types.PhotoSize(type="x", w=100, h=100, size=1000)],
+        dc_id=1,
+    )
+    return types.MessageMediaPhoto(photo=photo)
+
+
 async def _write_photo(_message: Any, *, file: str, thumb: str) -> str:
     Path(file).write_bytes(b"jpeg")
     return file
@@ -263,17 +275,8 @@ def test_range_paging_reads_every_message_once() -> None:
 
 
 def test_download_reports_one_entry_per_requested_id(tmp_path: Path) -> None:
-    photo = types.Photo(
-        id=1,
-        access_hash=2,
-        file_reference=b"",
-        date=None,
-        sizes=[types.PhotoSize(type="x", w=100, h=100, size=1000)],
-        dc_id=1,
-    )
     client = _fake_client_for(
-        "download",
-        [_sample_msg(1, types.MessageMediaPhoto(photo=photo)), _sample_msg(2)],
+        "download", [_sample_msg(1, _photo_media()), _sample_msg(2)]
     )
     with patch("tg_cli.commands.download.make_client", return_value=client):
         result = CliRunner().invoke(
@@ -453,3 +456,47 @@ def test_migrated_chat_redirects_tg_thread() -> None:
     assert payload[0]["group_id"] == _MIGRATED_CHANNEL_MARKED_ID
     (root_entity,), _ = client.get_messages.call_args
     assert root_entity.id == _MIGRATED_CHANNEL_ID
+
+
+def test_migrated_chat_redirects_tg_get() -> None:
+    """``tg get`` shares the resolver too: the message is fetched from
+    the supergroup and carries its marked id."""
+    client = _fake_migrated_client()
+    client.get_messages = AsyncMock(return_value=[client._post_migration_msg])
+    with patch("tg_cli.commands.get.make_client", return_value=client):
+        res = CliRunner().invoke(
+            cli.main, ["get", "--", f"-{_MIGRATED_OLD_CHAT_ID}", "77"]
+        )
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.stdout)
+    assert [m["group_id"] for m in payload] == [_MIGRATED_CHANNEL_MARKED_ID]
+    (entity_arg,), _ = client.get_messages.call_args
+    assert entity_arg.id == _MIGRATED_CHANNEL_ID
+
+
+def test_migrated_chat_redirects_tg_download(tmp_path: Path) -> None:
+    """``tg download`` names the saved file by the supergroup's marked
+    id, not by the old chat id given on the command line."""
+    client = _fake_migrated_client()
+    client._post_migration_msg.media = _photo_media()
+    client.get_messages = AsyncMock(return_value=[client._post_migration_msg])
+    client.download_media = AsyncMock(side_effect=_write_photo)
+    with patch("tg_cli.commands.download.make_client", return_value=client):
+        res = CliRunner().invoke(
+            cli.main,
+            [
+                "download",
+                "--dir",
+                str(tmp_path),
+                "--",
+                f"-{_MIGRATED_OLD_CHAT_ID}",
+                "77",
+            ],
+        )
+    assert res.exit_code == 0, res.output
+    [entry] = json.loads(res.stdout)
+    saved = tmp_path / f"{_MIGRATED_CHANNEL_MARKED_ID}_77.jpg"
+    assert (entry["status"], entry["path"]) == ("saved", str(saved))
+    assert [p.name for p in tmp_path.iterdir()] == [saved.name]
+    (entity_arg,), _ = client.get_messages.call_args
+    assert entity_arg.id == _MIGRATED_CHANNEL_ID

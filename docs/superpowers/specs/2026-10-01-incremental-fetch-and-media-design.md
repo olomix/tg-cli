@@ -47,8 +47,10 @@ Rules:
 - `--after-id` and `--since` are mutually exclusive: usage error, exit 2.
 - `--through-id` without `--after-id`: usage error, exit 2.
 - `--through-id` lower than or equal to `--after-id`: empty array, exit 0.
-- Both take integers of 0 or more; anything else is a usage error.
-  `--after-id 0` reads from the first message of the group.
+- Both take integers from 0 to 2147483647 (message ids are 32-bit);
+  anything else is a usage error. `--after-id 0` reads from the first
+  message of the group, and `--after-id 2147483647` selects nothing:
+  empty array, exit 0.
 - `--after-id` without `--through-id` reads up to the newest message.
 - `--limit` keeps its default of 100.
 
@@ -59,7 +61,9 @@ at the first id at or above `max_id`
 (`telethon/client/messages.py`, `_MessagesIter`).
 
 The command consumes the iterator until it has `--limit` messages or the
-range is exhausted. Telethon pages the underlying requests itself, so a
+range is exhausted, and stops by itself after the message with id `M`
+(or 2147483647 without `--through-id`): Telethon's request for the page
+after the largest id would overflow the 32-bit field. Telethon pages the underlying requests itself, so a
 result shorter than `--limit` always means the range is drained, never
 that one server page happened to be short.
 
@@ -87,7 +91,7 @@ Added to the JSON emitted by `messages`, `search`, `thread` and `get`:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `sender_username` | string or null | Sender's `@username` without the `@`. |
+| `sender_username` | string or null | Sender's `@username` without the `@`; the first active one when the sender has several. |
 | `topic_id` | int or null | Forum topic id; null outside forum topics. |
 | `media_kind` | string or null | See below. |
 | `grouped_id` | int or null | Album id shared by messages of one album. |
@@ -119,8 +123,9 @@ service message, which are not photo posts.
 
 `urls` collects both plain URLs and the targets of text links
 (`MessageEntityTextUrl`). Entity offsets are UTF-16 code units, so plain
-URLs are read through Telethon's `get_entities_text()` rather than by
-slicing the Python string.
+URLs are read through `telethon.utils.get_inner_text()`, the function
+behind Telethon's `get_entities_text()`, rather than by slicing the
+Python string.
 
 `forward` is `{"from_id": int or null, "from_name": string or null,
 "date": ISO-8601 string or null}`. `from_id` is a marked peer id, the
@@ -148,7 +153,12 @@ callers pass these through from the resolved entity.
 Fetch specific messages by id. Output is a JSON array of `Message`
 objects in the order the ids were given. Ids that do not exist are
 omitted; the command still exits 0, and an empty array is a valid result.
-At least one id is required.
+At least one id is required, each an integer from 1 to 2147483647.
+
+Messages are matched to the requested ids by their own id, not by their
+position in Telegram's answer, which may leave an id out or come in
+another order. An id given twice is returned twice. The same holds for
+`tg download`.
 
 Used to hydrate reply parents that fall outside a fetched range. `tg
 thread` cannot do this: it walks down from a root, not up to a parent.
@@ -165,6 +175,7 @@ Download the photos attached to the given messages into `DIR`.
   so a tight budget yields a smaller picture rather than a failure.
 - Only `media_kind == "photo"` is downloaded. Images sent as files are
   documents and are skipped.
+- Message ids follow the same rule as for `tg get`.
 
 Output is a JSON array with one object per requested id, in order:
 
@@ -178,8 +189,9 @@ are null and `reason` is `not_found`, `not_photo` or `too_large`. Skips
 are normal results and do not make the command fail.
 
 Operational failures do: a network or Telegram error during a download,
-or a disk error while writing, ends the command with a JSON error and a
-non-zero exit. Files already saved stay in place.
+a download that delivers no data, or a disk error while writing, ends
+the command with a JSON error and a non-zero exit. Files already saved
+stay in place.
 
 Writing is defensive:
 
@@ -187,7 +199,11 @@ Writing is defensive:
   place, so a partial file never carries the final name;
 - the size of the downloaded file is checked against `--max-bytes`; a
   file that turns out larger than its declared size is deleted and
-  reported as `too_large`;
+  reported as `too_large`. If it cannot be deleted the command fails
+  with `DownloadError`, so `too_large` always means nothing was kept;
+- a download that fails or is interrupted removes its temporary file.
+  This is best effort: the error reported is the one that ended the
+  download, even when the temporary file could not be removed;
 - an existing entry at the target name that is a symlink is replaced,
   not followed, so nothing is written outside `DIR`.
 
@@ -200,9 +216,9 @@ directory the caller names. The README security note changes from
 Existing mappings apply: `AuthError`,
 `GroupNotFoundError`, `AmbiguousGroupError`, `FloodWaitError`,
 `TelegramError`, and `UsageError` for the option conflicts above. An
-unwritable `--dir` surfaces as a usage error naming the path. A disk
-error during `download` is reported as `{"type": "DownloadError"}`, the
-one new error type.
+unwritable `--dir` surfaces as a usage error naming the path. A dropped
+connection, an empty download or a disk error during `download` is
+reported as `{"type": "DownloadError"}`, the one new error type.
 
 ## Testing
 
@@ -248,7 +264,8 @@ Live checks after implementation, against real groups:
 
 - `README.md` and `skill/SKILL.md`: new options, commands, fields, the
   paging contract and the revised security note.
-- Version bumped to 0.2.0 in `pyproject.toml` and `cli.py`.
+- Version bumped to 0.2.0 in `pyproject.toml`, `src/tg_cli/__init__.py`
+  and `cli.py`.
 - `docs/plans/20260419-forum-topics-support.md`: mark the `topic_id`
   field as delivered here.
 - After merging: `uv tool install --reinstall ~/src/tg-cli` and

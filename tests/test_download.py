@@ -577,10 +577,19 @@ def test_download_rejects_a_dir_that_cannot_be_created(
     assert blocker.read_text() == "not a directory"
 
 
-def test_download_rejects_a_read_only_dir(tmp_path: Path) -> None:
-    target = tmp_path / "ro"
+@pytest.mark.parametrize(
+    "mode",
+    [
+        pytest.param(0o500, id="read-only"),
+        pytest.param(0o200, id="not-searchable"),
+    ],
+)
+def test_download_rejects_a_dir_it_cannot_write_into(
+    tmp_path: Path, mode: int
+) -> None:
+    target = tmp_path / "locked"
     target.mkdir()
-    target.chmod(0o500)
+    target.chmod(mode)
     try:
         result, make_client = _invoke_without_client(
             "--dir", str(target), "1", "5"

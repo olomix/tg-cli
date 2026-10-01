@@ -33,7 +33,7 @@ class Group:
 @dataclass(frozen=True)
 class Message:
     """A Telegram message surfaced by ``tg messages`` / ``search`` /
-    ``thread``.
+    ``thread`` / ``get``.
 
     ``date`` is a timezone-aware UTC ``datetime`` and is rendered as an
     ISO-8601 string in :meth:`to_dict` for stable JSON output.
