@@ -404,15 +404,15 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `src/tg_cli/commands/messages.py`
 - Modify: `tests/test_messages.py`
 
-- [ ] write failing tests: `--after-id 100` calls `iter_messages` with `min_id=100`, `reverse=True` and no `max_id`, and the output keeps the iterator's order without reversing; `--after-id 100 --through-id 200` adds `max_id=201`; `--limit` is passed through
-- [ ] write failing tests for boundaries using a fake `iter_messages` that applies `min_id`/`max_id` to messages at ids N, N+1, M, M+1: only N+1 through M are returned; also ids with gaps and a result of exactly `--limit` messages. The call-argument assertions above are the ones that pin the Telethon mapping; this fake only checks the `M + 1` arithmetic end to end
-- [ ] write failing test: `--after-id 0` calls `iter_messages` with `min_id=0` and `reverse=True` (it must not fall back to the newest-first path)
-- [ ] write failing tests for usage errors, each asserting the JSON error on stderr and exit code 2: `--after-id` with `--since`; `--through-id` alone; a negative id; a non-integer id; an id of `2147483648`
-- [ ] write failing tests: `--through-id` at or below `--after-id` prints `[]`, exits 0 and does not call `iter_messages`; the same options with an unknown group still report `GroupNotFoundError`
-- [ ] write failing tests for the top of the id range: `--after-id 2147483647` prints `[]`, exits 0 and does not call `iter_messages`; `--after-id 100 --through-id 2147483647` is accepted and calls `iter_messages` with `max_id=2147483648`
-- [ ] add the two options and the range path to `messages.py`, leaving the default path as it is
-- [ ] confirm the existing default-path tests pass unchanged (newest `--limit`, reversed; `--since` cutoff)
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 7
+- [x] write failing tests: `--after-id 100` calls `iter_messages` with `min_id=100`, `reverse=True` and no `max_id`, and the output keeps the iterator's order without reversing; `--after-id 100 --through-id 200` adds `max_id=201`; `--limit` is passed through
+- [x] write failing tests for boundaries using a fake `iter_messages` that applies `min_id`/`max_id` to messages at ids N, N+1, M, M+1: only N+1 through M are returned; also ids with gaps and a result of exactly `--limit` messages. The call-argument assertions above are the ones that pin the Telethon mapping; this fake only checks the `M + 1` arithmetic end to end
+- [x] write failing test: `--after-id 0` calls `iter_messages` with `min_id=0` and `reverse=True` (it must not fall back to the newest-first path)
+- [x] write failing tests for usage errors, each asserting the JSON error on stderr and exit code 2: `--after-id` with `--since`; `--through-id` alone; a negative id; a non-integer id; an id of `2147483648`
+- [x] write failing tests: `--through-id` at or below `--after-id` prints `[]`, exits 0 and does not call `iter_messages`; the same options with an unknown group still report `GroupNotFoundError`
+- [x] write failing tests for the top of the id range: `--after-id 2147483647` prints `[]`, exits 0 and does not call `iter_messages`; `--after-id 100 --through-id 2147483647` is accepted and calls `iter_messages` with `max_id=2147483648`
+- [x] add the two options and the range path to `messages.py`, leaving the default path as it is
+- [x] confirm the existing default-path tests pass unchanged (newest `--limit`, reversed; `--since` cutoff)
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 7
 
 ### Task 7: Add `tg get`
 
