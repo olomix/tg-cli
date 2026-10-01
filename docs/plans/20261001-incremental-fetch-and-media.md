@@ -66,11 +66,19 @@ work.
     what `Message.get_entities_text()` uses, and unlike that method it
     works on the test doubles.
   - `MessageFwdHeader` has `from_id` (a peer), `from_name`, `date`.
-  - Photo size variants: `PhotoSize(size)`, `PhotoSizeProgressive(sizes)`,
-    `PhotoCachedSize(bytes)`, `PhotoStrippedSize` (a blurred placeholder,
-    never downloaded).
-  - `client.download_media(message, file=path, thumb=<size object>)`
-    downloads one chosen variant and returns the path it wrote.
+  - Photo size variants that hold a real image: `PhotoSize(size)`,
+    `PhotoSizeProgressive(sizes)`, `PhotoCachedSize(bytes)`. The others
+    are placeholders and are never downloaded: `PhotoStrippedSize`
+    (blurred preview), `PhotoPathSize` (outline), `PhotoSizeEmpty`.
+  - `client.download_media(message, file=path, thumb=<type string>)`
+    downloads one chosen variant and returns the path it wrote. The
+    variant must be named by its `.type` string, not passed as an
+    object (see `tg download` below).
+  - In reverse mode Telethon starts the request at `min_id + 1`, so
+    `min_id=2**31 - 1` overflows the 32-bit field and raises
+    `struct.error`. `max_id` is only a local stop condition there and
+    is not serialised, so `max_id=2**31` (from `--through-id 2**31 - 1`)
+    is safe.
 - **Exact-shape assertions**: `test_messages.py` (two tests),
   `test_search.py` and `test_thread.py` (one each) compare a whole
   message dict. The three contract tests use a sender with
@@ -235,6 +243,10 @@ accepted and noted in the README.
   still checked and the group still resolved first, so a bad group
   reports `GroupNotFoundError` rather than `[]`; only `iter_messages` is
   skipped.
+- `--after-id 2147483647` (the largest id) → empty array by the same
+  short-circuit, with or without `--through-id`: no larger id exists,
+  and calling Telethon would overflow (see Context). `--through-id
+  2147483647` itself is valid and must not be rejected.
 - Range path: `iter_messages(entity, limit=limit, min_id=after_id,
   reverse=True)`, plus `max_id=through_id + 1` when given. The result is
   already oldest-first; it is not reversed.
@@ -267,10 +279,14 @@ first: `tg download --dir d -- -100123 5` works,
 - Per message: `None` → `not_found`; `media_kind != "photo"`, or a
   `media.photo` that is not a `types.Photo` (expired or empty) →
   `not_photo`; otherwise choose the variant.
-- Variant choice: for each entry of `photo.sizes` take its declared byte
-  size (`size`, the largest of `sizes`, or `len(bytes)`); skip
-  `PhotoStrippedSize`. Pick the largest that fits `--max-bytes`; none
-  fits → `too_large`.
+- Variant choice: consider only the three real variants, matched by
+  `isinstance`, each with its declared byte size: `PhotoSize` (`size`),
+  `PhotoSizeProgressive` (the largest of `sizes`), `PhotoCachedSize`
+  (`len(bytes)`). Everything else is ignored, including
+  `PhotoStrippedSize`, `PhotoPathSize`, `PhotoSizeEmpty` and any type
+  not known today, so an unexpected entry cannot raise. Pick the
+  largest that fits `--max-bytes`. Real variants exist but none fits →
+  `too_large`. No real variant at all → `not_photo`.
 - Download call: pass the chosen variant as its **type string**,
   `thumb=chosen.type` (for example `"y"`). Telethon's thumb lookup
   ignores a `PhotoSizeProgressive` object and then downloads nothing,
@@ -393,6 +409,7 @@ first: `tg download --dir d -- -100123 5` works,
 - [ ] write failing test: `--after-id 0` calls `iter_messages` with `min_id=0` and `reverse=True` (it must not fall back to the newest-first path)
 - [ ] write failing tests for usage errors, each asserting the JSON error on stderr and exit code 2: `--after-id` with `--since`; `--through-id` alone; a negative id; a non-integer id; an id of `2147483648`
 - [ ] write failing tests: `--through-id` at or below `--after-id` prints `[]`, exits 0 and does not call `iter_messages`; the same options with an unknown group still report `GroupNotFoundError`
+- [ ] write failing tests for the top of the id range: `--after-id 2147483647` prints `[]`, exits 0 and does not call `iter_messages`; `--after-id 100 --through-id 2147483647` is accepted and calls `iter_messages` with `max_id=2147483648`
 - [ ] add the two options and the range path to `messages.py`, leaving the default path as it is
 - [ ] confirm the existing default-path tests pass unchanged (newest `--limit`, reversed; `--since` cutoff)
 - [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 7
@@ -421,7 +438,7 @@ first: `tg download --dir d -- -100123 5` works,
 
 - [ ] write failing tests in `tests/test_errors.py`: `DownloadError` is mapped by `handle_errors` to `{"type": "DownloadError", ...}` with a non-zero exit
 - [ ] write failing tests in `tests/test_download.py` for results, using `tmp_path` and a fake `download_media` that writes bytes to the path it is given and returns it: a photo is saved as `<group_id>_<message_id>.jpg` with `status` `saved`, an absolute `path` and the real `bytes`; a missing id gives `not_found`; a text message, a link preview, a document and a `MessageMediaPhoto(photo=None)` give `not_photo`; entries come back in request order; a negative group id works in the form `download --dir d -- -1001234567890 5`
-- [ ] write failing tests for variant choice: among several sizes the largest that fits `--max-bytes` is chosen; a `PhotoSizeProgressive` counts by its largest entry; a `PhotoStrippedSize` is never chosen; no variant fits gives `too_large`; the default limit is 5 MiB
+- [ ] write failing tests for variant choice: among several sizes the largest that fits `--max-bytes` is chosen; a `PhotoSizeProgressive` counts by its largest entry; a `PhotoCachedSize` counts by the length of its bytes and can be chosen; `PhotoStrippedSize`, `PhotoPathSize` and `PhotoSizeEmpty` are never chosen and do not raise; a photo whose sizes are only placeholders gives `not_photo`; real variants that all exceed the limit give `too_large`; the default limit is 5 MiB
 - [ ] write failing tests for the `thumb` argument: it is the chosen variant's `.type` **string**, including when the chosen variant is a `PhotoSizeProgressive`; and passing that same value to the real `telethon.client.downloads.DownloadMethods._get_thumb` with the photo's sizes returns the chosen variant, not `None`
 - [ ] write failing tests for the directory: a missing `--dir` is created with mode 0700; a `--dir` that cannot be created, and an existing directory made read-only with `chmod 0o500`, are each a JSON usage error naming the path with exit 2, raised before `make_client` is called; `--dir` omitted is a usage error; an id of 0 and `2147483648` are usage errors
 - [ ] add `DownloadError` to `src/tg_cli/errors.py` and its branch in `_classify`
