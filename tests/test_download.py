@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import stat
@@ -15,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from click.testing import CliRunner
 from telethon.client.downloads import DownloadMethods
+from telethon.errors import RPCError
 from telethon.tl import types
 
 from tg_cli import cli
@@ -184,6 +186,24 @@ def _thumbs(client: MagicMock) -> list[Any]:
     return [
         call.kwargs["thumb"] for call in client.download_media.await_args_list
     ]
+
+
+def _files(client: MagicMock) -> list[str]:
+    return [
+        call.kwargs["file"] for call in client.download_media.await_args_list
+    ]
+
+
+def _names(directory: Path) -> list[str]:
+    return sorted(p.name for p in directory.iterdir())
+
+
+def _error(result: Any) -> dict[str, str]:
+    assert result.exit_code == 1, result.output
+    # Empty stderr means the failure escaped as a traceback.
+    assert result.stderr, repr(result.exception)
+    assert result.stdout == ""
+    return json.loads(result.stderr)
 
 
 def _usage_error(result: Any) -> str:
@@ -548,3 +568,244 @@ def test_download_unknown_group_reports_group_not_found(
     assert payload["type"] == "GroupNotFoundError"
     client.download_media.assert_not_called()
     client.disconnect.assert_awaited_once()
+
+
+# --- write path ----------------------------------------------------------
+
+
+class _ServerError(RPCError):
+    def __init__(self) -> None:
+        super().__init__(request=None, message="INTERNAL")
+
+
+def _failing_on(message_id: int, exc: BaseException) -> AsyncMock:
+    """``download_media`` that leaves a partial file and raises for one
+    message, and saves every other message whole."""
+
+    async def download_media(message: Any, *, file: str, thumb: Any) -> str:
+        if message.id == message_id:
+            Path(file).write_bytes(b"partial")
+            raise exc
+        Path(file).write_bytes(b"whole")
+        return file
+
+    return AsyncMock(side_effect=download_media)
+
+
+def test_download_writes_to_a_temporary_name_inside_the_dir(
+    tmp_path: Path,
+) -> None:
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    [entry] = _entries(result)
+    [file] = _files(client)
+    assert os.path.dirname(file) == str(tmp_path)
+    assert file != entry["path"]
+    # Telethon appends an extension to a name that has none and would
+    # then write to a file the command does not know about.
+    assert file.endswith(".jpg")
+    # Hidden, so a caller listing the photos never picks up a partial one.
+    assert os.path.basename(file).startswith(".")
+    assert _names(tmp_path) == ["-1000000000001_5.jpg"]
+
+
+def test_download_saves_the_file_telethon_reports_writing(
+    tmp_path: Path,
+) -> None:
+    async def download_media(message: Any, *, file: str, thumb: Any) -> str:
+        renamed = file[: -len(".jpg")] + " (1).jpg"
+        Path(renamed).write_bytes(b"photo")
+        return renamed
+
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    client.download_media = AsyncMock(side_effect=download_media)
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    [entry] = _entries(result)
+    assert entry["status"] == "saved"
+    assert entry["bytes"] == 5
+    assert Path(entry["path"]).read_bytes() == b"photo"
+    assert _names(tmp_path) == ["-1000000000001_5.jpg"]
+
+
+def test_download_deletes_an_oversize_file_telethon_renamed(
+    tmp_path: Path,
+) -> None:
+    async def download_media(message: Any, *, file: str, thumb: Any) -> str:
+        renamed = file[: -len(".jpg")] + " (1).jpg"
+        Path(renamed).write_bytes(b"p" * 2001)
+        return renamed
+
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    client.download_media = AsyncMock(side_effect=download_media)
+    result = _invoke(
+        client, "--dir", str(tmp_path), "--max-bytes", "2000", "1", "5"
+    )
+    assert _entries(result) == [_skipped(5, "too_large")]
+    assert _names(tmp_path) == []
+
+
+def test_download_that_returns_nothing_is_a_download_error(
+    tmp_path: Path,
+) -> None:
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    client.download_media = AsyncMock(return_value=None)
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    payload = _error(result)
+    assert payload["type"] == "DownloadError"
+    assert "message 5" in payload["error"]
+    assert _names(tmp_path) == []
+    client.disconnect.assert_awaited_once()
+
+
+def test_download_that_leaves_an_empty_file_is_a_download_error(
+    tmp_path: Path,
+) -> None:
+    client = _fake_client(
+        entity=_entity(1), stored=[_photo_msg(5)], payloads={5: b""}
+    )
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    payload = _error(result)
+    assert payload["type"] == "DownloadError"
+    assert "message 5" in payload["error"]
+    assert _names(tmp_path) == []
+
+
+def test_download_deletes_a_file_larger_than_the_variant_declared(
+    tmp_path: Path,
+) -> None:
+    client = _fake_client(
+        entity=_entity(1),
+        stored=[_photo_msg(5, _size("x", 1000)), _photo_msg(6)],
+        payloads={5: b"p" * 2000, 6: b"p" * 2001},
+    )
+    result = _invoke(
+        client, "--dir", str(tmp_path), "--max-bytes", "2000", "1", "5", "6"
+    )
+    at_limit, over_limit = _entries(result)
+    assert (at_limit["status"], at_limit["bytes"]) == ("saved", 2000)
+    assert over_limit == _skipped(6, "too_large")
+    assert client.download_media.await_count == 2
+    assert _names(tmp_path) == ["-1000000000001_5.jpg"]
+
+
+@pytest.mark.parametrize(
+    "exc,error_type,cause",
+    [
+        pytest.param(
+            OSError(errno.ENOSPC, "No space left on device"),
+            "DownloadError",
+            "No space left on device",
+            id="disk",
+        ),
+        pytest.param(
+            ConnectionError("Connection lost"),
+            "DownloadError",
+            "Connection lost",
+            id="connection",
+        ),
+        # A timeout carries no text of its own.
+        pytest.param(
+            TimeoutError(), "DownloadError", "TimeoutError", id="timeout"
+        ),
+        pytest.param(_ServerError(), "TelegramError", "INTERNAL", id="rpc"),
+    ],
+)
+def test_download_failing_midway_leaves_no_partial_file(
+    tmp_path: Path, exc: BaseException, error_type: str, cause: str
+) -> None:
+    client = _fake_client(
+        entity=_entity(1), stored=[_photo_msg(5), _photo_msg(6)]
+    )
+    client.download_media = _failing_on(6, exc)
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5", "6")
+    payload = _error(result)
+    assert payload["type"] == error_type
+    assert cause in payload["error"]
+    assert not (tmp_path / "-1000000000001_6.jpg").exists()
+    assert _names(tmp_path) == ["-1000000000001_5.jpg"]
+    assert (tmp_path / "-1000000000001_5.jpg").read_bytes() == b"whole"
+    client.disconnect.assert_awaited_once()
+
+
+def test_download_that_cannot_take_the_target_name_is_a_download_error(
+    tmp_path: Path,
+) -> None:
+    occupied = tmp_path / "-1000000000001_5.jpg"
+    occupied.mkdir()
+    (occupied / "keep").write_text("kept")
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    payload = _error(result)
+    assert payload["type"] == "DownloadError"
+    assert "message 5" in payload["error"]
+    assert _names(tmp_path) == [occupied.name]
+    assert (occupied / "keep").read_text() == "kept"
+
+
+def test_download_that_cannot_create_its_temporary_file_is_a_download_error(
+    tmp_path: Path,
+) -> None:
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    answer = client.get_messages.side_effect
+
+    # The directory passes the start-up check and turns read-only later.
+    async def get_messages(entity: Any, *, ids: list[int]) -> list[Any]:
+        tmp_path.chmod(0o500)
+        return await answer(entity, ids=ids)
+
+    client.get_messages = AsyncMock(side_effect=get_messages)
+    try:
+        result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    finally:
+        tmp_path.chmod(0o700)
+    payload = _error(result)
+    assert payload["type"] == "DownloadError"
+    assert "message 5" in payload["error"]
+    client.download_media.assert_not_called()
+    assert _names(tmp_path) == []
+
+
+# --- target name ---------------------------------------------------------
+
+
+def test_download_replaces_a_symlink_at_the_target_name(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"untouched")
+    directory = tmp_path / "photos"
+    directory.mkdir()
+    target = directory / "-1000000000001_5.jpg"
+    target.symlink_to(outside)
+    client = _fake_client(
+        entity=_entity(1), stored=[_photo_msg(5)], payloads={5: b"photo"}
+    )
+    result = _invoke(client, "--dir", str(directory), "1", "5")
+    [entry] = _entries(result)
+    assert entry["status"] == "saved"
+    assert not target.is_symlink()
+    assert target.read_bytes() == b"photo"
+    assert outside.read_bytes() == b"untouched"
+    assert _names(directory) == [target.name]
+
+
+def test_download_overwrites_an_existing_file_only_once_complete(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "-1000000000001_5.jpg"
+    target.write_bytes(b"old")
+    during_download = []
+
+    async def download_media(message: Any, *, file: str, thumb: Any) -> str:
+        Path(file).write_bytes(b"new")
+        during_download.append(target.read_bytes())
+        return file
+
+    client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
+    client.download_media = AsyncMock(side_effect=download_media)
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    [entry] = _entries(result)
+    assert entry["status"] == "saved"
+    assert during_download == [b"old"]
+    assert target.read_bytes() == b"new"
+    assert _names(tmp_path) == [target.name]

@@ -451,13 +451,13 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `src/tg_cli/commands/download.py`
 - Modify: `tests/test_download.py`
 
-- [ ] write failing tests for the temporary file: the path passed to `download_media` is inside `--dir` and ends in `.jpg`; after a successful save no temporary file is left in the directory
-- [ ] write failing tests for a download that produced nothing: `download_media` returning `None`, and one leaving a 0-byte file, each give a `DownloadError` JSON error with a non-zero exit, never `saved`
-- [ ] write failing test: a download that turns out larger than `--max-bytes` is deleted and reported `too_large`
-- [ ] write failing tests for failures mid-download, each asserting no file under the final name, no leftover temporary file, and that a file saved earlier in the same run stays: an `OSError` and a `ConnectionError` give `DownloadError`; a Telethon `RPCError` gives `TelegramError`; all exit non-zero
-- [ ] write failing tests for the target name: a symlink already there is replaced and the file it pointed to is unchanged; an existing regular file is overwritten
-- [ ] implement the write path from Technical Details: `mkstemp` with the `.jpg` suffix, use of the returned path, the empty and oversize checks, `os.replace`, one `try` around the per-file sequence with `except OSError` and a `finally` that removes the temporary file
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 10
+- [x] write failing tests for the temporary file: the path passed to `download_media` is inside `--dir` and ends in `.jpg`; after a successful save no temporary file is left in the directory
+- [x] write failing tests for a download that produced nothing: `download_media` returning `None`, and one leaving a 0-byte file, each give a `DownloadError` JSON error with a non-zero exit, never `saved`
+- [x] write failing test: a download that turns out larger than `--max-bytes` is deleted and reported `too_large`
+- [x] write failing tests for failures mid-download, each asserting no file under the final name, no leftover temporary file, and that a file saved earlier in the same run stays: an `OSError` and a `ConnectionError` give `DownloadError`; a Telethon `RPCError` gives `TelegramError`; all exit non-zero
+- [x] write failing tests for the target name: a symlink already there is replaced and the file it pointed to is unchanged; an existing regular file is overwritten
+- [x] implement the write path from Technical Details: `mkstemp` with the `.jpg` suffix, use of the returned path, the empty and oversize checks, `os.replace`, one `try` around the per-file sequence with `except OSError` and a `finally` that removes the temporary file
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 10
 
 ### Task 10: Bump the version and extend the acceptance tests
 

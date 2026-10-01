@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
+import tempfile
 from typing import Any
 
 import click
 from telethon.tl import types as _tl
 
 from ..client import make_client
-from ..errors import AuthError, handle_errors
+from ..errors import AuthError, DownloadError, handle_errors
 from ._peer import marked_peer_id
 from ._resolve import resolve
 
@@ -103,16 +105,64 @@ async def _save_photo(
     if not fitting:
         return _skipped(message_id, "too_large")
     _, chosen = max(fitting, key=lambda pair: pair[0])
-    # Named by type string: Telethon ignores a ``PhotoSizeProgressive``
-    # passed as an object and then downloads nothing.
-    await client.download_media(raw, file=path, thumb=chosen.type)
+    saved_bytes = await _download_variant(
+        client, raw, chosen.type, path, max_bytes
+    )
+    if saved_bytes is None:
+        return _skipped(message_id, "too_large")
     return {
         "id": message_id,
         "status": "saved",
         "path": path,
-        "bytes": os.path.getsize(path),
+        "bytes": saved_bytes,
         "reason": None,
     }
+
+
+async def _download_variant(
+    client: Any, raw: Any, variant_type: str, path: str, max_bytes: int
+) -> int | None:
+    """Download one size of the message's photo to ``path`` and return
+    its byte count, or ``None`` when the file turns out larger than
+    ``max_bytes``. ``path`` is only touched by a complete download."""
+    no_data = f"Telegram sent no data for the photo of message {raw.id}."
+    leftovers: set[str] = set()
+    try:
+        # Hidden, so a partial file is not taken for a photo. Without the
+        # extension Telethon appends one and writes to another file.
+        fd, temp_path = tempfile.mkstemp(
+            dir=os.path.dirname(path), prefix=".", suffix=".jpg"
+        )
+        leftovers.add(temp_path)
+        os.close(fd)
+        # Named by type string: Telethon ignores a ``PhotoSizeProgressive``
+        # passed as an object and then downloads nothing.
+        written = await client.download_media(
+            raw, file=temp_path, thumb=variant_type
+        )
+        if written is None:
+            raise DownloadError(no_data)
+        leftovers.add(written)
+        size = os.path.getsize(written)
+        if size == 0:
+            raise DownloadError(no_data)
+        if size > max_bytes:
+            return None
+        # Swaps a symlink at ``path`` instead of writing through it.
+        os.replace(written, path)
+        return size
+    except OSError as exc:
+        # Covers a dropped connection too: ``ConnectionError`` and
+        # ``TimeoutError`` are ``OSError`` subclasses.
+        raise DownloadError(
+            f"Cannot save the photo of message {raw.id}: "
+            f"{str(exc) or type(exc).__name__}"
+        ) from exc
+    finally:
+        for leftover in leftovers:
+            # A failed cleanup must not replace the error being raised.
+            with contextlib.suppress(OSError):
+                os.unlink(leftover)
 
 
 def _skipped(message_id: int, reason: str) -> dict[str, Any]:
