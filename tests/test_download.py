@@ -526,6 +526,17 @@ def test_download_rejects_an_invalid_id(tmp_path: Path, bad_id: str) -> None:
     make_client.assert_not_called()
 
 
+@pytest.mark.parametrize("argv", [["1", "-5"], ["--", "1", "-5"]])
+def test_download_rejects_a_negative_id(
+    tmp_path: Path, argv: list[str]
+) -> None:
+    result, make_client = _invoke_without_client(
+        "--dir", str(tmp_path), *argv
+    )
+    assert "-5" in _usage_error(result)
+    make_client.assert_not_called()
+
+
 @pytest.mark.parametrize("bad_limit", ["0", "-1", "big"])
 def test_download_rejects_an_invalid_max_bytes(
     tmp_path: Path, bad_limit: str

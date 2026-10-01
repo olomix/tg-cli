@@ -481,12 +481,13 @@ first: `tg download --dir d -- -100123 5` works,
 
 ### Task 11: Verify acceptance criteria
 
-- [ ] verify each numbered section of the spec against the code: range rules, the seven fields, `get`, `download`, errors
-- [ ] verify backward compatibility: `tg messages`, `tg search` and `tg thread` without new options behave as before; the first seven keys of every message are unchanged in name, type and order
-- [ ] verify every case listed in the spec's Testing section has a test
-- [ ] run the full suite: `uv run pytest -q`
-- [ ] run lint: `uv run ruff check src tests`
-- [ ] run coverage: `uv run pytest --cov=tg_cli --cov-report=term-missing` - `_message.py`, `get.py`, `download.py` and the range path in `messages.py` at 90% or above
+- [x] verify each numbered section of the spec against the code: range rules, the seven fields, `get`, `download`, errors
+- [x] verify backward compatibility: `tg messages`, `tg search` and `tg thread` without new options behave as before; the first seven keys of every message are unchanged in name, type and order (the 235 tests from `main` pass against this code once the seven appended keys are hidden; only the version assertion differs)
+- [x] verify every case listed in the spec's Testing section has a test
+- [x] ➕ add the tests the verification found missing: `link` on the `--after-id` path of `tg messages` (dropping it there failed no test), a negative message id for `get` and `download`, and `AmbiguousGroupError` for `get` and `download`
+- [x] run the full suite: `uv run pytest -q` (427 passed)
+- [x] run lint: `uv run ruff check src tests`
+- [x] run coverage: `uv run pytest --cov=tg_cli --cov-report=term-missing` - `_message.py`, `get.py`, `download.py` and the range path in `messages.py` at 90% or above (`_message.py` 99%, `get.py` 100%, `download.py` 100%, `messages.py` 97% with every range-path line covered)
 
 ### Task 12: [Final] Update documentation
 

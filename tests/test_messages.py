@@ -655,6 +655,20 @@ def test_messages_after_id_reads_forward_from_that_id() -> None:
     assert "max_id" not in kwargs
 
 
+def test_messages_id_range_emits_links() -> None:
+    entity = SimpleNamespace(
+        id=1234567890, title="Dev", megagroup=True, username="dev_chat"
+    )
+    client = _fake_client(entity=entity, history=_history(101, 102))
+    result = _invoke(client, "@dev_chat", "--after-id", "100")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert [m["link"] for m in data] == [
+        "https://t.me/dev_chat/101",
+        "https://t.me/dev_chat/102",
+    ]
+
+
 def test_messages_through_id_sets_exclusive_max_id() -> None:
     client = _fake_client(entity=_entity(1), history=[])
     result = _invoke(

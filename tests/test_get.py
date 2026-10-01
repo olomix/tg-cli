@@ -216,6 +216,14 @@ def test_get_rejects_an_invalid_id(bad_id: str) -> None:
     client.connect.assert_not_called()
 
 
+@pytest.mark.parametrize("argv", [["1", "-5"], ["--", "1", "-5"]])
+def test_get_rejects_a_negative_id(argv: list[str]) -> None:
+    client = _fake_client(entity=_entity(1), stored=[_msg(5)])
+    result = _invoke(client, *argv)
+    assert "-5" in _usage_error(result)
+    client.connect.assert_not_called()
+
+
 def test_get_errors_when_not_authorized() -> None:
     client = _fake_client(
         entity=_entity(1), stored=[_msg(5)], authorized=False

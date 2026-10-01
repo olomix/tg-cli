@@ -266,6 +266,8 @@ def test_time_parse_error_emits_json(
         ("messages", ("messages", "dev")),
         ("search", ("search", "dev", "q")),
         ("thread", ("thread", "dev", "5")),
+        ("get", ("get", "dev", "5")),
+        ("download", ("download", "--dir", "photos", "dev", "5")),
     ],
 )
 def test_ambiguous_group_emits_json(
