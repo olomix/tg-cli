@@ -307,7 +307,14 @@ first: `tg download --dir d -- -100123 5` works,
   `thumb=chosen.type` (for example `"y"`). Telethon's thumb lookup
   ignores a `PhotoSizeProgressive` object and then downloads nothing,
   and the largest variant of a modern photo is usually progressive. The
-  string form works for every size class.
+  string form works for every size class. The message passed is a copy
+  whose photo holds only the chosen variant: Telethon sorts every size
+  before it picks one and raises `ValueError` on a
+  `PhotoSizeProgressive` with an empty `sizes` list. The copy's
+  `video_sizes` is cleared too: Telethon searches those as well and
+  raises `AttributeError` on a `VideoSizeEmojiMarkup` or
+  `VideoSizeStickerMarkup`, which has no `type`. The message Telegram
+  returned is not changed.
 - Temporary file: `tempfile.mkstemp(dir=DIR, prefix=".", suffix=".jpg")`,
   close the descriptor, pass that path as `file=`. Telethon writes to
   an existing file under the name it was given, so the temporary path
@@ -539,7 +546,9 @@ already right, failing against a mutated copy of the code.
 - [x] ➕ treat a `PhotoSizeProgressive` with no sizes as a placeholder, and read `sender_username` from `sender.usernames` when `sender.username` is empty (789705e)
 - [x] ➕ add tests: a lone `--through-id 0`, a writable but non-searchable `--dir`, a forum reply header naming no message, the link of a topic id of 0, real `types.Message` and `types.MessageReplyHeader` objects through `to_message`, and the migrated-chat redirect of `tg get` and `tg download` (29ec564)
 - [x] ➕ bring this plan, the spec, the forum topics plan and the stale docstrings in line with the code, and document upgrading to 0.2.0 in `README.md` and `skill/SKILL.md`
-- [x] run `uv run pytest -q` (458 passed) and `uv run ruff check src tests`
+- [x] ➕ hand Telethon a copy of the message whose photo holds only the chosen variant, so a `PhotoSizeProgressive` with no sizes next to a real variant no longer raises inside Telethon; the regression runs Telethon's real `download_media`. Say in the spec that `too_large` after a download means more bytes than `--max-bytes`
+- [x] ➕ clear `video_sizes` on the photo copy handed to Telethon, so a `VideoSizeEmojiMarkup` or `VideoSizeStickerMarkup` next to the chosen size no longer raises inside Telethon; the regression runs Telethon's real `download_media` for both
+- [x] run `uv run pytest -q` (462 passed) and `uv run ruff check src tests`
 
 ## Post-Completion
 

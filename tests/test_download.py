@@ -95,6 +95,16 @@ def _photo_msg(id: int, *sizes: Any) -> SimpleNamespace:
     return _msg(id, types.MessageMediaPhoto(photo=_photo(*sizes)))
 
 
+def _real_photo_msg(id: int, *sizes: Any) -> types.Message:
+    return types.Message(
+        id=id,
+        peer_id=types.PeerChannel(channel_id=1),
+        date=_DAY,
+        message="",
+        media=types.MessageMediaPhoto(photo=_photo(*sizes)),
+    )
+
+
 def _link_preview_media() -> types.MessageMediaWebPage:
     webpage = types.WebPage(
         id=1,
@@ -156,6 +166,26 @@ def _fake_client(
     client.get_messages = AsyncMock(side_effect=get_messages)
     client.download_media = AsyncMock(side_effect=download_media)
     return client
+
+
+def _telethon_download(fetched: bytes = b"") -> tuple[AsyncMock, list[Any]]:
+    """``download_media`` that runs Telethon's real one, and the list
+    its return values go to. Only the network fetch is replaced: it
+    writes ``fetched`` to the file it is given."""
+    telethon = DownloadMethods()
+    returned = []
+
+    async def download_file(_location: Any, file: str, **_: Any) -> str:
+        Path(file).write_bytes(fetched)
+        return file
+
+    async def download_media(message: Any, *, file: str, thumb: Any) -> Any:
+        path = await telethon.download_media(message, file=file, thumb=thumb)
+        returned.append(path)
+        return path
+
+    telethon.download_file = AsyncMock(side_effect=download_file)
+    return AsyncMock(side_effect=download_media), returned
 
 
 def _invoke(client: MagicMock, *args: str) -> Any:
@@ -472,13 +502,63 @@ def test_download_never_picks_a_placeholder_variant(tmp_path: Path) -> None:
     assert _thumbs(client) == ["m"]
 
 
-def test_download_never_picks_a_progressive_variant_without_sizes(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "real",
+    [
+        pytest.param(_size("m", 300), id="plain"),
+        pytest.param(_progressive("x", 100, 300), id="progressive"),
+        pytest.param(_cached("c", 300), id="cached"),
+    ],
+)
+def test_download_through_telethon_ignores_a_progressive_size_without_sizes(
+    tmp_path: Path, real: Any
 ) -> None:
-    sizes = [_size("m", 500), _progressive("y")]
-    entry, client = _download_one(tmp_path, sizes)
-    assert entry["status"] == "saved"
-    assert _thumbs(client) == ["m"]
+    """Telethon's own choice of size raises on such an entry, so this
+    runs its real download too."""
+    sizes = [real, _progressive("y")]
+    message = _real_photo_msg(5, *sizes)
+    client = _fake_client(entity=_entity(1), stored=[message])
+    client.download_media, _ = _telethon_download(fetched=b"c" * 300)
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    [entry] = _entries(result)
+    assert (entry["status"], entry["bytes"]) == ("saved", 300)
+    assert Path(entry["path"]).read_bytes() == b"c" * 300
+    assert _names(tmp_path) == ["-1000000000001_5.jpg"]
+    assert message.media.photo.sizes == sizes
+
+
+@pytest.mark.parametrize(
+    "video_size",
+    [
+        pytest.param(
+            types.VideoSizeEmojiMarkup(emoji_id=1, background_colors=[0]),
+            id="emoji-markup",
+        ),
+        pytest.param(
+            types.VideoSizeStickerMarkup(
+                stickerset=types.InputStickerSetEmpty(),
+                sticker_id=1,
+                background_colors=[0],
+            ),
+            id="sticker-markup",
+        ),
+    ],
+)
+def test_download_through_telethon_ignores_a_video_size_markup(
+    tmp_path: Path, video_size: Any
+) -> None:
+    """Telethon looks the size up among the video sizes too, where a
+    markup has no type to compare, so this runs its real download."""
+    message = _real_photo_msg(5, _cached("c", 300))
+    message.media.photo.video_sizes = [video_size]
+    client = _fake_client(entity=_entity(1), stored=[message])
+    client.download_media, _ = _telethon_download()
+    result = _invoke(client, "--dir", str(tmp_path), "1", "5")
+    [entry] = _entries(result)
+    assert (entry["status"], entry["bytes"]) == ("saved", 300)
+    assert Path(entry["path"]).read_bytes() == b"c" * 300
+    assert _names(tmp_path) == ["-1000000000001_5.jpg"]
+    assert message.media.photo.video_sizes == [video_size]
 
 
 @pytest.mark.parametrize(
@@ -546,7 +626,8 @@ def test_download_names_the_variant_by_its_type_string(
     assert thumb == chosen.type
     # Telethon must find the same variant from what it was handed; a
     # ``PhotoSizeProgressive`` object passed as-is resolves to ``None``.
-    assert DownloadMethods._get_thumb(sizes, thumb) is chosen
+    [handed] = client.download_media.await_args.args
+    assert DownloadMethods._get_thumb(handed.media.photo.sizes, thumb) is chosen
 
 
 # --- directory -----------------------------------------------------------
@@ -724,28 +805,12 @@ def test_download_through_telethon_fills_the_temporary_file_it_is_given(
 ) -> None:
     """The write path relies on Telethon writing a photo to the existing
     file it is handed and to no other; this runs its real download."""
-    message = types.Message(
-        id=5,
-        peer_id=types.PeerChannel(channel_id=1),
-        date=_DAY,
-        message="",
-        media=types.MessageMediaPhoto(
-            photo=_photo(*_placeholders(), _cached("c", 300))
-        ),
-    )
-    telethon = DownloadMethods()
-    written = []
-
-    async def download_media(message: Any, *, file: str, thumb: Any) -> Any:
-        path = await telethon.download_media(message, file=file, thumb=thumb)
-        written.append(path)
-        return path
-
+    message = _real_photo_msg(5, *_placeholders(), _cached("c", 300))
     client = _fake_client(entity=_entity(1), stored=[message])
-    client.download_media = AsyncMock(side_effect=download_media)
+    client.download_media, returned = _telethon_download()
     result = _invoke(client, "--dir", str(tmp_path), "1", "5")
     [entry] = _entries(result)
-    assert written == _files(client)
+    assert returned == _files(client)
     assert (entry["status"], entry["bytes"]) == ("saved", 300)
     assert Path(entry["path"]).read_bytes() == b"c" * 300
     assert _names(tmp_path) == ["-1000000000001_5.jpg"]

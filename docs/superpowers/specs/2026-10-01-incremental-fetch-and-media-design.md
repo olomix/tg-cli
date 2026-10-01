@@ -198,8 +198,9 @@ Writing is defensive:
 - each file is downloaded to a temporary name in `DIR` and renamed into
   place, so a partial file never carries the final name;
 - the size of the downloaded file is checked against `--max-bytes`; a
-  file that turns out larger than its declared size is deleted and
-  reported as `too_large`. If it cannot be deleted the command fails
+  file that turns out larger than `--max-bytes` is deleted and reported
+  as `too_large`, while one that only exceeds the size Telegram
+  declared for it is kept. If it cannot be deleted the command fails
   with `DownloadError`, so `too_large` always means nothing was kept;
 - a download that fails or is interrupted removes its temporary file.
   This is best effort: the error reported is the one that ended the
