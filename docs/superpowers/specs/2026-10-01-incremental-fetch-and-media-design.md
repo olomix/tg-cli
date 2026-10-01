@@ -136,9 +136,10 @@ same form `group_id` uses.
 is not derived by stripping the sign or prefix from a marked id. Shapes
 follow https://core.telegram.org/api/links#message-links.
 
-`to_message` currently receives only the group id. It gains the resolved
-entity's username so it can build `link`; the three existing callers pass
-it through.
+`to_message` currently receives only the group id. It also needs what
+`link` is built from: the entity's username, its bare id, and whether it
+is a channel or supergroup rather than a basic group. The three existing
+callers pass these through from the resolved entity.
 
 ## 3. `tg get <group> <id>... [--pretty]`
 
