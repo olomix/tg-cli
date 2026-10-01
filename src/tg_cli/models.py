@@ -71,3 +71,23 @@ class Message:
             "forward": self.forward,
             "link": self.link,
         }
+
+
+@dataclass(frozen=True)
+class DownloadResult:
+    """What ``tg download`` did for one requested message id.
+
+    ``status`` is ``"saved"`` or ``"skipped"``. A saved photo has its
+    absolute ``path`` and its size in ``bytes``; a skipped one has
+    neither, and a ``reason``: ``"not_found"``, ``"not_photo"`` or
+    ``"too_large"``.
+    """
+
+    id: int
+    status: str
+    path: str | None
+    bytes: int | None
+    reason: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

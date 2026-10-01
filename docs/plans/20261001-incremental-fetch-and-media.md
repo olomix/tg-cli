@@ -341,7 +341,8 @@ first: `tg download --dir d -- -100123 5` works,
   effort: when it fails, the error that ended the download is the one
   reported.
 - Result entry: `{"id", "status", "path", "bytes", "reason"}`; `path` is
-  absolute.
+  absolute. It is the `DownloadResult` dataclass in `models.py`, so the
+  keys and their order are defined once, like `Group` and `Message`.
 
 ## What Goes Where
 
@@ -550,8 +551,14 @@ already right, failing against a mutated copy of the code.
 - [x] ➕ add tests: a lone `--through-id 0`, a writable but non-searchable `--dir`, a forum reply header naming no message, the link of a topic id of 0, real `types.Message` and `types.MessageReplyHeader` objects through `to_message`, and the migrated-chat redirect of `tg get` and `tg download` (29ec564)
 - [x] ➕ bring this plan, the spec, the forum topics plan and the stale docstrings in line with the code, and document upgrading to 0.2.0 in `README.md` and `skill/SKILL.md`
 - [x] ➕ hand Telethon a copy of the message whose photo holds only the chosen variant, so a `PhotoSizeProgressive` with no sizes next to a real variant no longer raises inside Telethon; the regression runs Telethon's real `download_media`. Say in the spec that `too_large` after a download means more bytes than `--max-bytes`
-- [x] ➕ clear `video_sizes` on the photo copy handed to Telethon, so a `VideoSizeEmojiMarkup` or `VideoSizeStickerMarkup` next to the chosen size no longer raises inside Telethon; the regression runs Telethon's real `download_media` for both
-- [x] run `uv run pytest -q` (462 passed) and `uv run ruff check src tests`
+- [x] ➕ clear `video_sizes` on the photo copy handed to Telethon, so a `VideoSizeEmojiMarkup` or `VideoSizeStickerMarkup` next to the chosen size no longer raises inside Telethon; the regression runs Telethon's real `download_media` for both (f55543f)
+- [x] ➕ shorten the first sentence of the `tg get` and `tg download` docstrings so `tg --help` lists them uncut, and give the five new multi-line docstrings in `src` the summary, blank line and body form used on `main` (b36daff)
+- [x] ➕ define `MAX_MESSAGE_ID` and the `MESSAGE_ID` Click type once in `_message.py` for `get`, `download` and the range options of `tg messages`, and use `MESSAGE_ID` in `tg thread` too, where an id above 2147483647 reached Telethon and raised `struct.error`; an id of 0 or below is now a usage error there as well (977dd93)
+- [x] ➕ read `username` in `tg groups` through `public_username`, so a group whose handle is listed only in `usernames` reports it instead of null (355d0ef)
+- [x] ➕ build the result entries of `tg download` as a `DownloadResult` dataclass in `models.py` (15f796f) and rename `_require_writable_dir` to `_ensure_writable_dir` (8ccd457)
+- [x] ➕ compare `tg_cli.__version__` and the `tg --version` output with the version in `pyproject.toml` instead of a literal in the tests; changing any one of the three copies still fails a test (124fcff)
+- [x] ➕ remove duplication in `tests/test_download.py` and `tests/test_message_fields.py` (aee3c66)
+- [x] run `uv run pytest -q` (469 passed) and `uv run ruff check src tests`
 
 ## Post-Completion
 

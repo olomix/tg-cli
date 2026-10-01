@@ -15,6 +15,7 @@ from telethon.tl import types as _tl
 
 from ..client import make_client
 from ..errors import AuthError, DownloadError, handle_errors
+from ..models import DownloadResult
 from ._message import MESSAGE_ID, messages_by_id
 from ._peer import marked_peer_id
 from ._resolve import resolve
@@ -51,16 +52,16 @@ def download(
     The photos go into the --dir directory. Prints one JSON result per
     id, in the order given.
     """
-    _require_writable_dir(directory)
+    _ensure_writable_dir(directory)
     results = asyncio.run(
         _download_photos(
             group, list(message_ids), os.path.abspath(directory), max_bytes
         )
     )
-    click.echo(json.dumps(results))
+    click.echo(json.dumps([r.to_dict() for r in results]))
 
 
-def _require_writable_dir(path: str) -> None:
+def _ensure_writable_dir(path: str) -> None:
     try:
         os.makedirs(path, mode=0o700, exist_ok=True)
     except OSError as exc:
@@ -73,7 +74,7 @@ def _require_writable_dir(path: str) -> None:
 
 async def _download_photos(
     group: str, message_ids: list[int], directory: str, max_bytes: int
-) -> list[dict[str, Any]]:
+) -> list[DownloadResult]:
     client = make_client()
     await client.connect()
     try:
@@ -99,7 +100,7 @@ async def _download_photos(
 
 async def _save_photo(
     client: Any, raw: Any, message_id: int, path: str, max_bytes: int
-) -> dict[str, Any]:
+) -> DownloadResult:
     if raw is None:
         return _skipped(message_id, "not_found")
     variants = _real_variants(raw)
@@ -112,13 +113,13 @@ async def _save_photo(
     saved_bytes = await _download_variant(client, raw, chosen, path, max_bytes)
     if saved_bytes is None:
         return _skipped(message_id, "too_large")
-    return {
-        "id": message_id,
-        "status": "saved",
-        "path": path,
-        "bytes": saved_bytes,
-        "reason": None,
-    }
+    return DownloadResult(
+        id=message_id,
+        status="saved",
+        path=path,
+        bytes=saved_bytes,
+        reason=None,
+    )
 
 
 async def _download_variant(
@@ -185,14 +186,14 @@ def _with_photo_sizes(raw: Any, sizes: list[Any]) -> Any:
     return message
 
 
-def _skipped(message_id: int, reason: str) -> dict[str, Any]:
-    return {
-        "id": message_id,
-        "status": "skipped",
-        "path": None,
-        "bytes": None,
-        "reason": reason,
-    }
+def _skipped(message_id: int, reason: str) -> DownloadResult:
+    return DownloadResult(
+        id=message_id,
+        status="skipped",
+        path=None,
+        bytes=None,
+        reason=reason,
+    )
 
 
 def _real_variants(raw: Any) -> list[tuple[int, Any]]:

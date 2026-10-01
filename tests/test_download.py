@@ -1,13 +1,15 @@
-"""Tests for the ``tg download`` command."""
+"""Tests for the ``tg download`` command and
+:class:`tg_cli.models.DownloadResult`."""
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import json
 import os
 import stat
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +23,7 @@ from telethon.errors import FloodWaitError, RPCError
 from telethon.tl import types
 
 from tg_cli import cli
+from tg_cli.models import DownloadResult
 
 _DAY = datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc)
 _MIB = 1024 * 1024
@@ -204,6 +207,10 @@ def _entries(result: Any) -> list[dict[str, Any]]:
     return json.loads(result.stdout)
 
 
+def _summary(result: Any) -> list[tuple[int, str, str | None]]:
+    return [(e["id"], e["status"], e["reason"]) for e in _entries(result)]
+
+
 def _skipped(id: int, reason: str) -> dict[str, Any]:
     return {
         "id": id,
@@ -228,6 +235,16 @@ def _files(client: MagicMock) -> list[str]:
 
 def _names(directory: Path) -> list[str]:
     return sorted(p.name for p in directory.iterdir())
+
+
+@contextlib.contextmanager
+def _unlocked_afterwards(directory: Path) -> Iterator[None]:
+    """Make ``directory`` writable again once the block ends, however
+    it ends, so pytest can remove what a test locked."""
+    try:
+        yield
+    finally:
+        directory.chmod(0o700)
 
 
 def _error(result: Any) -> dict[str, str]:
@@ -255,6 +272,19 @@ def _download_one(
 
 
 # --- results -------------------------------------------------------------
+
+
+def test_download_result_to_dict_has_the_documented_keys_in_order() -> None:
+    result = DownloadResult(
+        id=5, status="saved", path="/d/-1_5.jpg", bytes=777, reason=None
+    )
+    assert list(result.to_dict().items()) == [
+        ("id", 5),
+        ("status", "saved"),
+        ("path", "/d/-1_5.jpg"),
+        ("bytes", 777),
+        ("reason", None),
+    ]
 
 
 def test_download_saves_a_photo_named_by_group_and_message_id(
@@ -304,7 +334,7 @@ def test_download_reports_a_missing_id_as_not_found(tmp_path: Path) -> None:
     result = _invoke(client, "--dir", str(tmp_path), "1", "9")
     assert _entries(result) == [_skipped(9, "not_found")]
     client.download_media.assert_not_called()
-    assert list(tmp_path.iterdir()) == []
+    assert _names(tmp_path) == []
 
 
 @pytest.mark.parametrize(
@@ -327,7 +357,7 @@ def test_download_skips_a_message_without_a_photo(
     result = _invoke(client, "--dir", str(tmp_path), "1", "5")
     assert _entries(result) == [_skipped(5, "not_photo")]
     client.download_media.assert_not_called()
-    assert list(tmp_path.iterdir()) == []
+    assert _names(tmp_path) == []
 
 
 def test_download_returns_one_entry_per_id_in_request_order(
@@ -338,17 +368,14 @@ def test_download_returns_one_entry_per_id_in_request_order(
         entity=entity, stored=[_msg(3), _photo_msg(5), _photo_msg(7)]
     )
     result = _invoke(client, "--dir", str(tmp_path), "1", "7", "3", "9", "5")
-    summary = [
-        (e["id"], e["status"], e["reason"]) for e in _entries(result)
-    ]
-    assert summary == [
+    assert _summary(result) == [
         (7, "saved", None),
         (3, "skipped", "not_photo"),
         (9, "skipped", "not_found"),
         (5, "saved", None),
     ]
     client.get_messages.assert_awaited_once_with(entity, ids=[7, 3, 9, 5])
-    assert sorted(p.name for p in tmp_path.iterdir()) == [
+    assert _names(tmp_path) == [
         "-1000000000001_5.jpg",
         "-1000000000001_7.jpg",
     ]
@@ -383,10 +410,6 @@ def _answer(client: MagicMock, *messages: Any) -> None:
     """Make ``get_messages`` return exactly ``messages``, whatever ids
     it is asked for."""
     client.get_messages = AsyncMock(return_value=list(messages))
-
-
-def _summary(result: Any) -> list[tuple[int, str, str | None]]:
-    return [(e["id"], e["status"], e["reason"]) for e in _entries(result)]
 
 
 def test_download_reports_an_id_telegram_left_out_as_not_found(
@@ -588,7 +611,7 @@ def test_download_skips_a_photo_whose_variants_all_exceed_the_limit(
     entry, client = _download_one(tmp_path, sizes, "--max-bytes", "999")
     assert entry == _skipped(5, "too_large")
     client.download_media.assert_not_called()
-    assert list(tmp_path.iterdir()) == []
+    assert _names(tmp_path) == []
 
 
 def test_download_default_limit_is_five_mebibytes(tmp_path: Path) -> None:
@@ -671,12 +694,10 @@ def test_download_rejects_a_dir_it_cannot_write_into(
     target = tmp_path / "locked"
     target.mkdir()
     target.chmod(mode)
-    try:
+    with _unlocked_afterwards(target):
         result, make_client = _invoke_without_client(
             "--dir", str(target), "1", "5"
         )
-    finally:
-        target.chmod(0o700)
     error = _usage_error(result)
     assert str(target) in error
     make_client.assert_not_called()
@@ -961,10 +982,8 @@ def test_download_that_cannot_create_its_temporary_file_is_a_download_error(
         return await answer(entity, ids=ids)
 
     client.get_messages = AsyncMock(side_effect=get_messages)
-    try:
+    with _unlocked_afterwards(tmp_path):
         result = _invoke(client, "--dir", str(tmp_path), "1", "5")
-    finally:
-        tmp_path.chmod(0o700)
     payload = _error(result)
     assert payload["type"] == "DownloadError"
     assert "message 5" in payload["error"]
@@ -983,12 +1002,10 @@ def test_download_that_cannot_delete_an_oversize_file_is_a_download_error(
 
     client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
     client.download_media = AsyncMock(side_effect=download_media)
-    try:
+    with _unlocked_afterwards(tmp_path):
         result = _invoke(
             client, "--dir", str(tmp_path), "--max-bytes", "2000", "1", "5"
         )
-    finally:
-        tmp_path.chmod(0o700)
     payload = _error(result)
     assert payload["type"] == "DownloadError"
     assert "message 5" in payload["error"]
@@ -1026,10 +1043,8 @@ def test_download_failure_is_still_reported_when_its_cleanup_fails_too(
 
     client = _fake_client(entity=_entity(1), stored=[_photo_msg(5)])
     client.download_media = AsyncMock(side_effect=download_media)
-    try:
+    with _unlocked_afterwards(tmp_path):
         result = _invoke(client, "--dir", str(tmp_path), "1", "5")
-    finally:
-        tmp_path.chmod(0o700)
     payload = _error(result)
     assert payload["type"] == error_type
     assert cause in payload["error"]

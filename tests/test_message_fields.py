@@ -31,10 +31,6 @@ def _raw(**overrides: Any) -> SimpleNamespace:
 _LINK_BASE = "https://t.me/dev"
 
 
-def _reply_header(**fields: Any) -> types.MessageReplyHeader:
-    return types.MessageReplyHeader(**fields)
-
-
 def _telethon_message(**fields: Any) -> types.Message:
     """A message of Telethon's own class, as the client returns it;
     with ``action`` instead of ``message`` it is a service message."""
@@ -185,7 +181,7 @@ def test_topic_id_is_none_without_a_reply_header() -> None:
 
 
 def test_topic_id_is_none_when_reply_is_not_in_a_forum_topic() -> None:
-    header = _reply_header(
+    header = types.MessageReplyHeader(
         reply_to_msg_id=41, reply_to_top_id=42, forum_topic=False
     )
     msg = to_message(_raw(reply_to=header), _GROUP_ID)
@@ -199,19 +195,19 @@ def test_topic_id_is_none_when_header_lacks_the_forum_flag() -> None:
 
 
 def test_topic_id_uses_the_top_id_of_a_forum_reply() -> None:
-    header = _reply_header(reply_to_top_id=42, forum_topic=True)
+    header = types.MessageReplyHeader(reply_to_top_id=42, forum_topic=True)
     msg = to_message(_raw(reply_to=header), _GROUP_ID)
     assert msg.topic_id == 42
 
 
 def test_topic_id_falls_back_to_the_replied_message_id() -> None:
-    header = _reply_header(reply_to_msg_id=42, forum_topic=True)
+    header = types.MessageReplyHeader(reply_to_msg_id=42, forum_topic=True)
     msg = to_message(_raw(reply_to=header), _GROUP_ID)
     assert msg.topic_id == 42
 
 
 def test_topic_id_prefers_the_top_id_over_the_replied_message_id() -> None:
-    header = _reply_header(
+    header = types.MessageReplyHeader(
         reply_to_msg_id=99, reply_to_top_id=42, forum_topic=True
     )
     msg = to_message(_raw(reply_to=header), _GROUP_ID)
@@ -220,7 +216,7 @@ def test_topic_id_prefers_the_top_id_over_the_replied_message_id() -> None:
 
 
 def test_topic_id_keeps_a_zero_top_id() -> None:
-    header = _reply_header(
+    header = types.MessageReplyHeader(
         reply_to_msg_id=99, reply_to_top_id=0, forum_topic=True
     )
     msg = to_message(_raw(reply_to=header), _GROUP_ID, link_base=_LINK_BASE)
@@ -229,7 +225,7 @@ def test_topic_id_keeps_a_zero_top_id() -> None:
 
 
 def test_topic_id_is_none_when_a_forum_reply_names_no_message() -> None:
-    header = _reply_header(forum_topic=True)
+    header = types.MessageReplyHeader(forum_topic=True)
     msg = to_message(_raw(reply_to=header), _GROUP_ID, link_base=_LINK_BASE)
     assert msg.topic_id is None
     assert msg.link == "https://t.me/dev/7"
@@ -558,7 +554,7 @@ def test_link_is_the_base_followed_by_the_message_id() -> None:
 
 
 def test_link_includes_the_topic_id_of_a_forum_message() -> None:
-    header = _reply_header(reply_to_top_id=42, forum_topic=True)
+    header = types.MessageReplyHeader(reply_to_top_id=42, forum_topic=True)
     msg = to_message(
         _raw(id=7, reply_to=header), _GROUP_ID, link_base="https://t.me/dev"
     )
@@ -566,7 +562,7 @@ def test_link_includes_the_topic_id_of_a_forum_message() -> None:
 
 
 def test_link_of_a_private_forum_message_includes_the_topic_id() -> None:
-    header = _reply_header(reply_to_top_id=42, forum_topic=True)
+    header = types.MessageReplyHeader(reply_to_top_id=42, forum_topic=True)
     msg = to_message(
         _raw(id=7, reply_to=header),
         _GROUP_ID,
@@ -587,6 +583,6 @@ def test_link_is_none_when_no_base_is_passed() -> None:
 
 
 def test_link_is_none_when_the_base_is_none() -> None:
-    header = _reply_header(reply_to_top_id=42, forum_topic=True)
+    header = types.MessageReplyHeader(reply_to_top_id=42, forum_topic=True)
     msg = to_message(_raw(id=7, reply_to=header), _GROUP_ID, link_base=None)
     assert msg.link is None
