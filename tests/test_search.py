@@ -216,7 +216,7 @@ def test_search_output_matches_messages_shape() -> None:
             "text": "hello world",
             "reply_to_id": None,
             "group_id": -1001234567890,
-            "sender_username": None,
+            "sender_username": "alice",
             "topic_id": None,
             "media_kind": None,
             "grouped_id": None,

@@ -131,7 +131,7 @@ def test_thread_includes_root_first_then_chronological_replies() -> None:
         "text": "question",
         "reply_to_id": None,
         "group_id": -1001234567890,
-        "sender_username": None,
+        "sender_username": "alice",
         "topic_id": None,
         "media_kind": None,
         "grouped_id": None,

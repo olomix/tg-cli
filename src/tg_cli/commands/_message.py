@@ -45,6 +45,9 @@ def to_message(raw: Any, group_id: int) -> Message:
         text=_message_text(raw),
         reply_to_id=_reply_to_id(raw),
         group_id=group_id,
+        sender_username=_sender_username(sender),
+        topic_id=_topic_id(raw),
+        grouped_id=_grouped_id(raw),
     )
 
 
@@ -79,5 +82,27 @@ def _sender_display_name(sender: Any) -> str | None:
     ]
     if parts:
         return " ".join(parts)
+    return _sender_username(sender)
+
+
+def _sender_username(sender: Any) -> str | None:
     username = getattr(sender, "username", None)
     return str(username) if username else None
+
+
+def _topic_id(raw: Any) -> int | None:
+    reply_to = getattr(raw, "reply_to", None)
+    if not getattr(reply_to, "forum_topic", False):
+        return None
+    # ``is not None`` rather than truthiness: a top id of 0 must not
+    # fall through to the replied-to message id.
+    for attr in ("reply_to_top_id", "reply_to_msg_id"):
+        value = getattr(reply_to, attr, None)
+        if value is not None:
+            return int(value)
+    return None
+
+
+def _grouped_id(raw: Any) -> int | None:
+    grouped_id = getattr(raw, "grouped_id", None)
+    return int(grouped_id) if grouped_id is not None else None

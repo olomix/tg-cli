@@ -344,13 +344,13 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `tests/test_search.py`
 - Modify: `tests/test_thread.py`
 
-- [ ] create `tests/test_message_fields.py` with a `_raw(**overrides)` helper building a minimal `SimpleNamespace` message, and call `to_message` directly
-- [ ] write failing tests for `sender_username`: sender with a username, sender without one, no sender
-- [ ] change the expected `sender_username` to `"alice"` in the three contract tests (`tests/test_messages.py`, `tests/test_search.py`, `tests/test_thread.py`), whose sender double already has that username; they fail until the extraction lands
-- [ ] write failing tests for `topic_id`: no reply header; `forum_topic` false; `forum_topic` true with `reply_to_top_id=42`; true with only `reply_to_msg_id=42`; true with both set (top id wins); `reply_to_top_id=0` is kept and does not fall through
-- [ ] write failing tests for `grouped_id`: present, absent
-- [ ] implement the three extractions in `_message.py` as private helpers called from `to_message`
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 3
+- [x] create `tests/test_message_fields.py` with a `_raw(**overrides)` helper building a minimal `SimpleNamespace` message, and call `to_message` directly
+- [x] write failing tests for `sender_username`: sender with a username, sender without one, no sender
+- [x] change the expected `sender_username` to `"alice"` in the three contract tests (`tests/test_messages.py`, `tests/test_search.py`, `tests/test_thread.py`), whose sender double already has that username; they fail until the extraction lands
+- [x] write failing tests for `topic_id`: no reply header; `forum_topic` false; `forum_topic` true with `reply_to_top_id=42`; true with only `reply_to_msg_id=42`; true with both set (top id wins); `reply_to_top_id=0` is kept and does not fall through
+- [x] write failing tests for `grouped_id`: present, absent
+- [x] implement the three extractions in `_message.py` as private helpers called from `to_message`
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 3
 
 ### Task 3: Extract `media_kind`
 
