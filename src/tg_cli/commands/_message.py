@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from telethon import utils as _utils
 from telethon.tl import types as _tl
 
 from ..models import Message
@@ -36,8 +37,8 @@ def to_message(raw: Any, group_id: int) -> Message:
     date = getattr(raw, "date", None)
     if date is None:
         date = datetime.fromtimestamp(0, tz=timezone.utc)
-    elif date.tzinfo is None:
-        date = date.replace(tzinfo=timezone.utc)
+    else:
+        date = _assume_utc(date)
 
     return Message(
         id=int(getattr(raw, "id", 0)),
@@ -51,7 +52,15 @@ def to_message(raw: Any, group_id: int) -> Message:
         topic_id=_topic_id(raw),
         media_kind=_media_kind(raw),
         grouped_id=_grouped_id(raw),
+        urls=_urls(raw),
+        forward=_forward(raw),
     )
+
+
+def _assume_utc(date: datetime) -> datetime:
+    if date.tzinfo is None:
+        return date.replace(tzinfo=timezone.utc)
+    return date
 
 
 def _message_text(raw: Any) -> str:
@@ -149,3 +158,28 @@ def _document_kind(document: Any) -> str:
     if audio is not None:
         return "voice" if audio.voice else "audio"
     return "document"
+
+
+def _urls(raw: Any) -> list[str]:
+    urls: list[str] = []
+    for entity in getattr(raw, "entities", None) or []:
+        if isinstance(entity, _tl.MessageEntityTextUrl):
+            urls.append(entity.url)
+        elif isinstance(entity, _tl.MessageEntityUrl):
+            # Offsets are UTF-16 units into ``message``; ``text`` is
+            # re-rendered as markdown and no longer matches them.
+            urls.extend(_utils.get_inner_text(raw.message, [entity]))
+    return list(dict.fromkeys(urls))
+
+
+def _forward(raw: Any) -> dict[str, Any] | None:
+    header = getattr(raw, "fwd_from", None)
+    if header is None:
+        return None
+    origin = header.from_id
+    date = header.date
+    return {
+        "from_id": None if origin is None else _utils.get_peer_id(origin),
+        "from_name": header.from_name,
+        "date": None if date is None else _assume_utc(date).isoformat(),
+    }

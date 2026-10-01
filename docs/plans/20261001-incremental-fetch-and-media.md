@@ -370,10 +370,10 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `src/tg_cli/commands/_message.py`
 - Modify: `tests/test_message_fields.py`
 
-- [ ] write failing tests for `urls`: no entities gives `[]`; a `MessageEntityTextUrl` yields its hidden target; a `MessageEntityUrl` yields the covered text; a plain URL preceded by an emoji outside the BMP is extracted intact; the same URL as text link and plain URL appears once; several URLs keep their order; other entity types are ignored; a message whose `text` differs from `message` (markdown re-rendering) still yields the URL from `message`
-- [ ] write failing tests for `forward`: no `fwd_from` gives null; a forward from a channel gives its marked `from_id` and ISO `date`; a forward with only `from_name` gives `from_id` null; a naive `date` is treated as UTC
-- [ ] implement `_urls(raw)` with `telethon.utils.get_inner_text` and `_forward(raw)` with `telethon.utils.get_peer_id`, and call both from `to_message`
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 5
+- [x] write failing tests for `urls`: no entities gives `[]`; a `MessageEntityTextUrl` yields its hidden target; a `MessageEntityUrl` yields the covered text; a plain URL preceded by an emoji outside the BMP is extracted intact; the same URL as text link and plain URL appears once; several URLs keep their order; other entity types are ignored; a message whose `text` differs from `message` (markdown re-rendering) still yields the URL from `message`
+- [x] write failing tests for `forward`: no `fwd_from` gives null; a forward from a channel gives its marked `from_id` and ISO `date`; a forward with only `from_name` gives `from_id` null; a naive `date` is treated as UTC
+- [x] implement `_urls(raw)` with `telethon.utils.get_inner_text` and `_forward(raw)` with `telethon.utils.get_peer_id`, and call both from `to_message`
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 5
 
 ### Task 5: Build message permalinks
 

@@ -94,6 +94,18 @@ def _poll_media() -> types.MessageMediaPoll:
     return types.MessageMediaPoll(poll=poll, results=types.PollResults())
 
 
+def _plain_url(message: str, url: str) -> types.MessageEntityUrl:
+    """Entity covering ``url`` in ``message``, in UTF-16 code units."""
+
+    def utf16_units(text: str) -> int:
+        return len(text.encode("utf-16-le")) // 2
+
+    return types.MessageEntityUrl(
+        offset=utf16_units(message[: message.index(url)]),
+        length=utf16_units(url),
+    )
+
+
 def test_sender_username_is_taken_from_the_sender() -> None:
     sender = SimpleNamespace(
         first_name="Alice", last_name="Doe", username="alice"
@@ -293,3 +305,161 @@ def test_media_kind_of_media_without_a_document_is_document() -> None:
 def test_media_kind_of_an_empty_document_is_document() -> None:
     media = types.MessageMediaDocument(document=types.DocumentEmpty(id=1))
     assert to_message(_raw(media=media), _GROUP_ID).media_kind == "document"
+
+
+def test_urls_is_empty_without_entities() -> None:
+    assert to_message(_raw(entities=None), _GROUP_ID).urls == []
+
+
+def test_urls_is_empty_when_the_attribute_is_missing() -> None:
+    assert to_message(_raw(), _GROUP_ID).urls == []
+
+
+def test_urls_holds_the_hidden_target_of_a_text_link() -> None:
+    raw = _raw(
+        message="read the docs",
+        entities=[
+            types.MessageEntityTextUrl(
+                offset=9, length=4, url="https://example.com/docs"
+            )
+        ],
+    )
+    assert to_message(raw, _GROUP_ID).urls == ["https://example.com/docs"]
+
+
+def test_urls_holds_the_text_covered_by_a_plain_url() -> None:
+    message = "see https://example.com/a for details"
+    raw = _raw(
+        message=message,
+        entities=[_plain_url(message, "https://example.com/a")],
+    )
+    assert to_message(raw, _GROUP_ID).urls == ["https://example.com/a"]
+
+
+def test_urls_reads_a_plain_url_after_a_non_bmp_emoji_intact() -> None:
+    # The emoji is one Python character but two UTF-16 code units, so
+    # the URL starts at offset 3, not 2.
+    raw = _raw(
+        message="\U0001f600 https://example.com/a",
+        entities=[types.MessageEntityUrl(offset=3, length=21)],
+    )
+    assert to_message(raw, _GROUP_ID).urls == ["https://example.com/a"]
+
+
+def test_urls_lists_a_url_once_when_linked_and_written_out() -> None:
+    message = "docs: https://example.com/docs"
+    raw = _raw(
+        message=message,
+        entities=[
+            types.MessageEntityTextUrl(
+                offset=0, length=4, url="https://example.com/docs"
+            ),
+            _plain_url(message, "https://example.com/docs"),
+        ],
+    )
+    assert to_message(raw, _GROUP_ID).urls == ["https://example.com/docs"]
+
+
+def test_urls_keep_their_order_of_appearance() -> None:
+    message = "https://c.example then link then https://a.example"
+    raw = _raw(
+        message=message,
+        entities=[
+            _plain_url(message, "https://c.example"),
+            types.MessageEntityTextUrl(
+                offset=23, length=4, url="https://b.example"
+            ),
+            _plain_url(message, "https://a.example"),
+        ],
+    )
+    assert to_message(raw, _GROUP_ID).urls == [
+        "https://c.example",
+        "https://b.example",
+        "https://a.example",
+    ]
+
+
+def test_urls_ignores_other_entity_types() -> None:
+    raw = _raw(
+        message="@bob bold bob@example.com #tag",
+        entities=[
+            types.MessageEntityMention(offset=0, length=4),
+            types.MessageEntityBold(offset=5, length=4),
+            types.MessageEntityEmail(offset=10, length=15),
+            types.MessageEntityHashtag(offset=26, length=4),
+        ],
+    )
+    assert to_message(raw, _GROUP_ID).urls == []
+
+
+def test_urls_are_read_from_the_raw_message_not_the_markdown_text() -> None:
+    # ``text`` mirrors Telethon's ``Message.text``, which re-renders the
+    # entities as markdown and so shifts every offset after the bold.
+    message = "bold https://example.com/x"
+    raw = _raw(
+        message=message,
+        text="**bold** https://example.com/x",
+        entities=[
+            types.MessageEntityBold(offset=0, length=4),
+            _plain_url(message, "https://example.com/x"),
+        ],
+    )
+    assert to_message(raw, _GROUP_ID).urls == ["https://example.com/x"]
+
+
+def test_forward_is_none_when_the_message_was_not_forwarded() -> None:
+    assert to_message(_raw(fwd_from=None), _GROUP_ID).forward is None
+
+
+def test_forward_is_none_when_the_attribute_is_missing() -> None:
+    assert to_message(_raw(), _GROUP_ID).forward is None
+
+
+def test_forward_from_a_channel_has_its_marked_id_and_iso_date() -> None:
+    header = types.MessageFwdHeader(
+        date=datetime(2026, 4, 16, 9, 30, tzinfo=timezone.utc),
+        from_id=types.PeerChannel(channel_id=1234567890),
+    )
+    assert to_message(_raw(fwd_from=header), _GROUP_ID).forward == {
+        "from_id": -1001234567890,
+        "from_name": None,
+        "date": "2026-04-16T09:30:00+00:00",
+    }
+
+
+def test_forward_from_a_user_has_the_user_id() -> None:
+    header = types.MessageFwdHeader(
+        date=datetime(2026, 4, 16, 9, 30, tzinfo=timezone.utc),
+        from_id=types.PeerUser(user_id=42),
+    )
+    forward = to_message(_raw(fwd_from=header), _GROUP_ID).forward
+    assert forward is not None
+    assert forward["from_id"] == 42
+
+
+def test_forward_with_only_a_name_has_no_from_id() -> None:
+    header = types.MessageFwdHeader(
+        date=datetime(2026, 4, 16, 9, 30, tzinfo=timezone.utc),
+        from_name="Hidden User",
+    )
+    assert to_message(_raw(fwd_from=header), _GROUP_ID).forward == {
+        "from_id": None,
+        "from_name": "Hidden User",
+        "date": "2026-04-16T09:30:00+00:00",
+    }
+
+
+def test_forward_treats_a_naive_date_as_utc() -> None:
+    header = types.MessageFwdHeader(
+        date=datetime(2026, 4, 16, 9, 30), from_name="Hidden User"
+    )
+    forward = to_message(_raw(fwd_from=header), _GROUP_ID).forward
+    assert forward is not None
+    assert forward["date"] == "2026-04-16T09:30:00+00:00"
+
+
+def test_forward_date_is_none_when_the_header_has_no_date() -> None:
+    header = types.MessageFwdHeader(date=None, from_name="Hidden User")
+    forward = to_message(_raw(fwd_from=header), _GROUP_ID).forward
+    assert forward is not None
+    assert forward["date"] is None
