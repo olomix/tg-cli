@@ -33,6 +33,7 @@ from tg_cli.config import ConfigError
 from tg_cli.errors import (
     NOT_LOGGED_IN_MESSAGE,
     AuthError,
+    DownloadError,
     MessageNotFoundError,
     _classify,
     emit_error,
@@ -129,6 +130,30 @@ def test_handle_errors_passes_through_unknown_exceptions() -> None:
     # into our JSON format.
     assert isinstance(result.exception, ValueError)
     assert result.stderr == ""
+
+
+def test_classify_maps_download_error() -> None:
+    assert _classify(DownloadError("disk full")) == (
+        "disk full",
+        "DownloadError",
+    )
+
+
+def test_handle_errors_maps_download_error_to_json() -> None:
+    import click
+
+    @click.command()
+    @handle_errors
+    def cmd() -> None:
+        raise DownloadError("cannot write photo: disk full")
+
+    result = CliRunner().invoke(cmd, [])
+    assert result.exit_code == 1
+    payload = _parse_error(result.stderr)
+    assert payload == {
+        "error": "cannot write photo: disk full",
+        "type": "DownloadError",
+    }
 
 
 DATA_COMMANDS = [

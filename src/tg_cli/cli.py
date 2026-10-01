@@ -11,6 +11,7 @@ from typing import Any
 
 import click
 
+from .commands.download import download
 from .commands.get import get
 from .commands.groups import groups
 from .commands.login import login
@@ -79,6 +80,7 @@ main.add_command(messages)
 main.add_command(search)
 main.add_command(thread)
 main.add_command(get)
+main.add_command(download)
 
 
 if __name__ == "__main__":
