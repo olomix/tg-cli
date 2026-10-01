@@ -421,11 +421,11 @@ first: `tg download --dir d -- -100123 5` works,
 - Modify: `src/tg_cli/cli.py`
 - Create: `tests/test_get.py`
 
-- [ ] write failing tests in `tests/test_get.py`: several ids return `Message` objects in the order requested, with `link` populated; ids that come back as `None` are omitted; all ids missing prints `[]` with exit 0; `--pretty` indents; a negative group id works in the form `get -- -1001234567890 5 6`
-- [ ] write failing tests for errors: no ids is a JSON usage error with exit 2; an id of 0, a non-integer and `2147483648` are usage errors; an unauthorised session gives `AuthError`; an unknown group gives `GroupNotFoundError`
-- [ ] create `src/tg_cli/commands/get.py`: `tg get <group> <id>... [--pretty]` using `make_client`, `resolve`, `client.get_messages(entity, ids=[...])` and `to_message`
-- [ ] register `get` in `src/tg_cli/cli.py`
-- [ ] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 8
+- [x] write failing tests in `tests/test_get.py`: several ids return `Message` objects in the order requested, with `link` populated; ids that come back as `None` are omitted; all ids missing prints `[]` with exit 0; `--pretty` indents; a negative group id works in the form `get -- -1001234567890 5 6`
+- [x] write failing tests for errors: no ids is a JSON usage error with exit 2; an id of 0, a non-integer and `2147483648` are usage errors; an unauthorised session gives `AuthError`; an unknown group gives `GroupNotFoundError`
+- [x] create `src/tg_cli/commands/get.py`: `tg get <group> <id>... [--pretty]` using `make_client`, `resolve`, `client.get_messages(entity, ids=[...])` and `to_message`
+- [x] register `get` in `src/tg_cli/cli.py`
+- [x] run `uv run pytest -q` and `uv run ruff check src tests` - must pass before task 8
 
 ### Task 8: Add `tg download` — selection, directory and results
 

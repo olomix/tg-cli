@@ -11,6 +11,7 @@ from typing import Any
 
 import click
 
+from .commands.get import get
 from .commands.groups import groups
 from .commands.login import login
 from .commands.messages import messages
@@ -77,6 +78,7 @@ main.add_command(groups)
 main.add_command(messages)
 main.add_command(search)
 main.add_command(thread)
+main.add_command(get)
 
 
 if __name__ == "__main__":
