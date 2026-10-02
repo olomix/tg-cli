@@ -1,4 +1,4 @@
-"""Marked-peer-id helper.
+"""Peer helpers: marked peer ids, usernames and message link prefixes.
 
 Telethon's ``Chat``/``Channel`` entities expose a *bare* positive ``id``,
 but the JSON contract in ``README.md`` and ``skill/SKILL.md`` documents
@@ -17,6 +17,10 @@ We ``isinstance``-check against both ``telethon.tl.types.Channel`` and
 or otherwise can't access; it lives in the same ``-1e12`` marked-id
 space) and fall back to flag inspection so the helper still works
 against the ``SimpleNamespace`` mocks the unit tests use.
+
+``message_link_base`` gives the ``t.me`` prefix of a group's message
+permalinks and ``public_username`` a peer's ``@username``; every
+command that emits messages uses both, and ``tg groups`` the latter.
 """
 
 from __future__ import annotations
@@ -38,9 +42,44 @@ def marked_peer_id(entity: Any) -> int:
     ``telethon.utils.get_peer_id``.
     """
     bare = int(entity.id)
-    if isinstance(entity, _CHANNEL_TYPES) or _looks_like_channel(entity):
+    if _is_channel(entity):
         return _CHANNEL_ID_OFFSET - bare
     return -bare
+
+
+def message_link_base(entity: Any) -> str | None:
+    """Return the ``t.me`` prefix shared by every message link of a group.
+
+    ``https://t.me/<username>`` for a public group or channel,
+    ``https://t.me/c/<bare id>`` for a private channel or supergroup,
+    and ``None`` for a basic group, which has no message permalinks.
+    """
+    username = public_username(entity)
+    if username:
+        return f"https://t.me/{username}"
+    if _is_channel(entity):
+        return f"https://t.me/c/{int(entity.id)}"
+    return None
+
+
+def public_username(entity: Any) -> str | None:
+    """Return a peer's ``@username`` without the ``@``, if it has one.
+
+    The peer is a user, group or channel.
+    """
+    username = getattr(entity, "username", None)
+    if username:
+        return str(username)
+    # A peer with several usernames can leave ``username`` empty and
+    # list them only here.
+    for entry in getattr(entity, "usernames", None) or []:
+        if getattr(entry, "active", False) and entry.username:
+            return str(entry.username)
+    return None
+
+
+def _is_channel(entity: Any) -> bool:
+    return isinstance(entity, _CHANNEL_TYPES) or _looks_like_channel(entity)
 
 
 def _looks_like_channel(entity: Any) -> bool:

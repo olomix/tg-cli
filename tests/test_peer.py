@@ -8,7 +8,11 @@ import pytest
 from telethon.tl import types
 from telethon.utils import get_peer_id
 
-from tg_cli.commands._peer import is_migrated_chat, marked_peer_id
+from tg_cli.commands._peer import (
+    is_migrated_chat,
+    marked_peer_id,
+    message_link_base,
+)
 
 
 def test_marked_peer_id_for_small_chat() -> None:
@@ -127,3 +131,77 @@ def test_is_migrated_chat_false_when_attribute_missing() -> None:
     assert is_migrated_chat(channel) is False
     forbidden = types.ChatForbidden(id=200, title="Banned chat")
     assert is_migrated_chat(forbidden) is False
+
+
+def test_message_link_base_for_public_supergroup() -> None:
+    entity = SimpleNamespace(
+        id=1234567890, title="Dev", megagroup=True, username="dev_chat"
+    )
+    assert message_link_base(entity) == "https://t.me/dev_chat"
+
+
+def test_message_link_base_for_public_broadcast_channel() -> None:
+    channel = types.Channel(
+        id=9876543210,
+        title="News",
+        photo=None,
+        date=None,
+        broadcast=True,
+        username="news",
+    )
+    assert message_link_base(channel) == "https://t.me/news"
+
+
+def test_message_link_base_uses_first_active_entry_of_usernames() -> None:
+    channel = types.Channel(
+        id=1234567890,
+        title="Dev",
+        photo=None,
+        date=None,
+        megagroup=True,
+        username=None,
+        usernames=[
+            types.Username(username="retired", active=False),
+            types.Username(username="dev_main", active=True),
+            types.Username(username="dev_alias", active=True),
+        ],
+    )
+    assert message_link_base(channel) == "https://t.me/dev_main"
+
+
+def test_message_link_base_for_private_supergroup_uses_bare_id() -> None:
+    entity = SimpleNamespace(
+        id=1234567890, title="Private", megagroup=True, username=None
+    )
+    assert marked_peer_id(entity) == -1001234567890
+    assert message_link_base(entity) == "https://t.me/c/1234567890"
+
+
+def test_message_link_base_for_private_channel_without_flags() -> None:
+    # A real ``Channel`` is recognised by type, as in ``marked_peer_id``.
+    channel = types.Channel(id=1234567890, title="X", photo=None, date=None)
+    assert message_link_base(channel) == "https://t.me/c/1234567890"
+
+
+def test_message_link_base_ignores_inactive_usernames() -> None:
+    entity = SimpleNamespace(
+        id=1234567890,
+        title="Private",
+        megagroup=True,
+        username="",
+        usernames=[types.Username(username="retired", active=False)],
+    )
+    assert message_link_base(entity) == "https://t.me/c/1234567890"
+
+
+def test_message_link_base_is_none_for_basic_group() -> None:
+    assert message_link_base(SimpleNamespace(id=42, title="Small")) is None
+    chat = types.Chat(
+        id=42,
+        title="Small",
+        photo=None,
+        participants_count=3,
+        date=None,
+        version=1,
+    )
+    assert message_link_base(chat) is None

@@ -11,6 +11,8 @@ from typing import Any
 
 import click
 
+from .commands.download import download
+from .commands.get import get
 from .commands.groups import groups
 from .commands.login import login
 from .commands.messages import messages
@@ -67,7 +69,7 @@ class _JsonErrorGroup(click.Group):
 # uninstalled checkout where package metadata is unavailable; keep
 # ``package_name`` so installed envs still display the metadata-derived
 # program name. Keep in sync with pyproject.toml's [project].version.
-@click.version_option(version="0.1.0", package_name="tg-cli")
+@click.version_option(version="0.2.0", package_name="tg-cli")
 def main() -> None:
     """Entry point referenced by the ``tg`` console script."""
 
@@ -77,6 +79,8 @@ main.add_command(groups)
 main.add_command(messages)
 main.add_command(search)
 main.add_command(thread)
+main.add_command(get)
+main.add_command(download)
 
 
 if __name__ == "__main__":

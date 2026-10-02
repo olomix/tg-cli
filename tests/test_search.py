@@ -216,6 +216,13 @@ def test_search_output_matches_messages_shape() -> None:
             "text": "hello world",
             "reply_to_id": None,
             "group_id": -1001234567890,
+            "sender_username": "alice",
+            "topic_id": None,
+            "media_kind": None,
+            "grouped_id": None,
+            "urls": [],
+            "forward": None,
+            "link": "https://t.me/c/1234567890/7",
         }
     ]
 

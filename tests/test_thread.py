@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 from telethon.errors import MsgIdInvalidError, PeerIdInvalidError
 
@@ -131,9 +132,20 @@ def test_thread_includes_root_first_then_chronological_replies() -> None:
         "text": "question",
         "reply_to_id": None,
         "group_id": -1001234567890,
+        "sender_username": "alice",
+        "topic_id": None,
+        "media_kind": None,
+        "grouped_id": None,
+        "urls": [],
+        "forward": None,
+        "link": "https://t.me/c/1234567890/10",
     }
     assert data[1]["reply_to_id"] == 10
     assert data[2]["reply_to_id"] == 10
+    assert [m["link"] for m in data[1:]] == [
+        "https://t.me/c/1234567890/11",
+        "https://t.me/c/1234567890/12",
+    ]
 
 
 def test_thread_passes_reply_to_and_reverse_to_iter_messages() -> None:
@@ -254,6 +266,33 @@ def test_thread_non_integer_message_id_rejected() -> None:
     payload = json.loads(result.stderr)
     assert payload["type"] == "UsageError"
     assert "not-an-int" in payload["error"]
+
+
+@pytest.mark.parametrize(
+    "argv", [["1", "0"], ["1", "2147483648"], ["--", "1", "-5"]]
+)
+def test_thread_rejects_an_id_no_message_can_have(argv: list[str]) -> None:
+    client = _fake_client(entity=_entity(1), root=None)
+    result = _invoke(client, *argv)
+    assert result.exit_code == 2, result.output
+    payload = json.loads(result.stderr)
+    assert payload["type"] == "UsageError"
+    assert "MESSAGE_ID" in payload["error"]
+    assert argv[-1] in payload["error"]
+    client.connect.assert_not_called()
+
+
+def test_thread_accepts_the_largest_message_id() -> None:
+    entity = _entity(1)
+    root = _msg(
+        id=2147483647,
+        text="root",
+        date=datetime(2026, 4, 17, tzinfo=timezone.utc),
+    )
+    client = _fake_client(entity=entity, root=root)
+    result = _invoke(client, "1", "2147483647")
+    assert result.exit_code == 0, result.output
+    client.get_messages.assert_awaited_once_with(entity, ids=2147483647)
 
 
 def test_thread_resolves_group_by_title_substring() -> None:

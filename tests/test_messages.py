@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import struct
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from tg_cli import cli
@@ -102,7 +104,96 @@ def test_message_to_dict_serialises_date_as_iso_string() -> None:
         "text": "hello",
         "reply_to_id": None,
         "group_id": -1001,
+        "sender_username": None,
+        "topic_id": None,
+        "media_kind": None,
+        "grouped_id": None,
+        "urls": [],
+        "forward": None,
+        "link": None,
     }
+
+
+def _message_with_old_arguments_only() -> Message:
+    return Message(
+        id=1,
+        date=datetime(2026, 4, 17, 10, 23, 45, tzinfo=timezone.utc),
+        sender_id=42,
+        sender_name="Alice",
+        text="hello",
+        reply_to_id=None,
+        group_id=-1001,
+    )
+
+
+def test_message_to_dict_appends_new_keys_after_the_old_ones() -> None:
+    data = _message_with_old_arguments_only().to_dict()
+    assert list(data) == [
+        "id",
+        "date",
+        "sender_id",
+        "sender_name",
+        "text",
+        "reply_to_id",
+        "group_id",
+        "sender_username",
+        "topic_id",
+        "media_kind",
+        "grouped_id",
+        "urls",
+        "forward",
+        "link",
+    ]
+
+
+def test_message_new_fields_default_to_absent() -> None:
+    data = _message_with_old_arguments_only().to_dict()
+    assert data["sender_username"] is None
+    assert data["topic_id"] is None
+    assert data["media_kind"] is None
+    assert data["grouped_id"] is None
+    assert data["urls"] == []
+    assert data["forward"] is None
+    assert data["link"] is None
+
+
+def test_message_to_dict_serialises_new_fields_unchanged() -> None:
+    forward = {
+        "from_id": -1009876543210,
+        "from_name": "Origin",
+        "date": "2026-04-16T08:00:00+00:00",
+    }
+    m = Message(
+        id=7,
+        date=datetime(2026, 4, 17, 10, 23, 45, tzinfo=timezone.utc),
+        sender_id=42,
+        sender_name="Alice",
+        text="look https://example.com",
+        reply_to_id=5,
+        group_id=-1001,
+        sender_username="alice",
+        topic_id=3,
+        media_kind="photo",
+        grouped_id=13579,
+        urls=["https://example.com", "https://example.org/a"],
+        forward=forward,
+        link="https://t.me/dev/3/7",
+    )
+    data = m.to_dict()
+    assert data["sender_username"] == "alice"
+    assert data["topic_id"] == 3
+    assert data["media_kind"] == "photo"
+    assert data["grouped_id"] == 13579
+    assert data["urls"] == ["https://example.com", "https://example.org/a"]
+    assert data["forward"] == forward
+    assert data["link"] == "https://t.me/dev/3/7"
+
+
+def test_message_instances_do_not_share_one_urls_list() -> None:
+    first = _message_with_old_arguments_only()
+    second = _message_with_old_arguments_only()
+    assert first.urls == []
+    assert first.urls is not second.urls
 
 
 def test_messages_outputs_contract_shape() -> None:
@@ -145,6 +236,13 @@ def test_messages_outputs_contract_shape() -> None:
             "text": "hello",
             "reply_to_id": None,
             "group_id": -1001234567890,
+            "sender_username": "alice",
+            "topic_id": None,
+            "media_kind": None,
+            "grouped_id": None,
+            "urls": [],
+            "forward": None,
+            "link": "https://t.me/c/1234567890/1",
         },
         {
             "id": 2,
@@ -154,9 +252,42 @@ def test_messages_outputs_contract_shape() -> None:
             "text": "reply",
             "reply_to_id": 1,
             "group_id": -1001234567890,
+            "sender_username": "alice",
+            "topic_id": None,
+            "media_kind": None,
+            "grouped_id": None,
+            "urls": [],
+            "forward": None,
+            "link": "https://t.me/c/1234567890/2",
         },
     ]
     client.get_entity.assert_awaited_once_with("@dev")
+
+
+def test_messages_on_public_group_emits_username_links() -> None:
+    entity = SimpleNamespace(
+        id=1234567890, title="Dev", megagroup=True, username="dev_chat"
+    )
+    history = [
+        _msg(
+            id=2,
+            text="reply",
+            date=datetime(2026, 4, 17, 10, 5, tzinfo=timezone.utc),
+        ),
+        _msg(
+            id=1,
+            text="hello",
+            date=datetime(2026, 4, 17, 10, 0, tzinfo=timezone.utc),
+        ),
+    ]
+    client = _fake_client(entity=entity, history=history)
+    result = _invoke(client, "@dev_chat")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert [m["link"] for m in data] == [
+        "https://t.me/dev_chat/1",
+        "https://t.me/dev_chat/2",
+    ]
 
 
 def test_messages_without_since_fetches_newest_without_reverse() -> None:
@@ -461,6 +592,314 @@ def test_messages_ambiguous_group_returns_clean_error() -> None:
     assert result.exit_code != 0
     assert "ambiguous" in result.stderr.lower()
     client.iter_messages.assert_not_called()
+
+
+_DAY = datetime(2026, 4, 17, tzinfo=timezone.utc)
+
+
+def _history(*ids: int) -> list[SimpleNamespace]:
+    return [_msg(id=i, text=f"m{i}", date=_DAY) for i in ids]
+
+
+def _client_filtering_by_id(
+    entity: SimpleNamespace, ids: Iterable[int]
+) -> MagicMock:
+    """Client whose ``iter_messages`` applies Telethon's id bounds: both
+    exclusive, ``max_id=0`` meaning no upper bound."""
+    stored = sorted(ids)
+
+    def iter_messages(
+        _entity: Any,
+        *,
+        limit: int,
+        min_id: int = 0,
+        max_id: int = 0,
+        reverse: bool = False,
+    ) -> _AsyncIter:
+        selected = [
+            i
+            for i in stored
+            if i > min_id and (max_id == 0 or i < max_id)
+        ]
+        if not reverse:
+            selected.reverse()
+        return _AsyncIter(_history(*selected[:limit]))
+
+    client = _fake_client(entity=entity, history=[])
+    client.iter_messages = MagicMock(side_effect=iter_messages)
+    return client
+
+
+def _output_ids(result: Any) -> list[int]:
+    assert result.exit_code == 0, result.output
+    return [m["id"] for m in json.loads(result.stdout)]
+
+
+def _usage_error(result: Any) -> str:
+    assert result.exit_code == 2, result.output
+    payload = json.loads(result.stderr)
+    assert payload["type"] == "UsageError"
+    return payload["error"]
+
+
+def test_messages_after_id_reads_forward_from_that_id() -> None:
+    entity = _entity(1)
+    client = _fake_client(entity=entity, history=_history(101, 102, 105))
+    result = _invoke(client, "1", "--after-id", "100")
+    # Telethon already yields oldest-first in reverse mode, so the
+    # output must keep the iterator's order.
+    assert _output_ids(result) == [101, 102, 105]
+    args, kwargs = client.iter_messages.call_args
+    assert args == (entity,)
+    assert kwargs["min_id"] == 100
+    assert kwargs["reverse"] is True
+    assert "max_id" not in kwargs
+
+
+def test_messages_id_range_emits_links() -> None:
+    entity = SimpleNamespace(
+        id=1234567890, title="Dev", megagroup=True, username="dev_chat"
+    )
+    client = _fake_client(entity=entity, history=_history(101, 102))
+    result = _invoke(client, "@dev_chat", "--after-id", "100")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert [m["link"] for m in data] == [
+        "https://t.me/dev_chat/101",
+        "https://t.me/dev_chat/102",
+    ]
+
+
+def test_messages_through_id_sets_exclusive_max_id() -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    result = _invoke(
+        client, "1", "--after-id", "100", "--through-id", "200"
+    )
+    assert result.exit_code == 0, result.output
+    _, kwargs = client.iter_messages.call_args
+    assert kwargs["min_id"] == 100
+    assert kwargs["max_id"] == 201
+    assert kwargs["reverse"] is True
+
+
+def test_messages_after_id_passes_limit_through() -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    result = _invoke(client, "1", "--after-id", "100", "--limit", "7")
+    assert result.exit_code == 0, result.output
+    _, kwargs = client.iter_messages.call_args
+    assert kwargs["limit"] == 7
+
+
+def test_messages_after_id_default_limit_is_100() -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    result = _invoke(client, "1", "--after-id", "100")
+    assert result.exit_code == 0, result.output
+    _, kwargs = client.iter_messages.call_args
+    assert kwargs["limit"] == 100
+
+
+def test_messages_id_range_excludes_after_id_and_includes_through_id() -> (
+    None
+):
+    client = _client_filtering_by_id(_entity(1), [100, 101, 200, 201])
+    result = _invoke(
+        client, "1", "--after-id", "100", "--through-id", "200"
+    )
+    assert _output_ids(result) == [101, 200]
+
+
+def test_messages_id_range_without_through_id_reads_to_the_newest() -> None:
+    client = _client_filtering_by_id(_entity(1), [100, 101, 200, 201])
+    result = _invoke(client, "1", "--after-id", "100")
+    assert _output_ids(result) == [101, 200, 201]
+
+
+def test_messages_id_range_tolerates_gaps_in_ids() -> None:
+    client = _client_filtering_by_id(_entity(1), [3, 7, 20, 21, 50])
+    result = _invoke(client, "1", "--after-id", "3", "--through-id", "21")
+    assert _output_ids(result) == [7, 20, 21]
+
+
+def test_messages_id_range_returns_the_oldest_limit_messages() -> None:
+    client = _client_filtering_by_id(_entity(1), [11, 12, 13, 14, 15])
+    result = _invoke(
+        client,
+        "1",
+        "--after-id",
+        "10",
+        "--through-id",
+        "15",
+        "--limit",
+        "3",
+    )
+    assert _output_ids(result) == [11, 12, 13]
+
+
+def test_messages_id_range_holding_exactly_limit_messages() -> None:
+    client = _client_filtering_by_id(_entity(1), [10, 11, 12, 13, 14])
+    result = _invoke(
+        client,
+        "1",
+        "--after-id",
+        "10",
+        "--through-id",
+        "13",
+        "--limit",
+        "3",
+    )
+    assert _output_ids(result) == [11, 12, 13]
+
+
+def test_messages_after_id_zero_reads_from_the_first_message() -> None:
+    client = _fake_client(entity=_entity(1), history=_history(1, 2))
+    result = _invoke(client, "1", "--after-id", "0")
+    assert _output_ids(result) == [1, 2]
+    _, kwargs = client.iter_messages.call_args
+    assert kwargs["min_id"] == 0
+    assert kwargs["reverse"] is True
+
+
+def test_messages_after_id_with_since_is_a_usage_error() -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    result = _invoke(client, "1", "--after-id", "100", "--since", "24h")
+    error = _usage_error(result)
+    assert "--after-id" in error
+    assert "--since" in error
+    client.connect.assert_not_called()
+
+
+@pytest.mark.parametrize("through_id", ["200", "0"])
+def test_messages_through_id_without_after_id_is_a_usage_error(
+    through_id: str,
+) -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    result = _invoke(client, "1", "--through-id", through_id)
+    error = _usage_error(result)
+    assert "--through-id" in error
+    assert "--after-id" in error
+    client.connect.assert_not_called()
+
+
+@pytest.mark.parametrize("bad_id", ["-5", "abc", "2147483648"])
+def test_messages_after_id_rejects_an_invalid_id(bad_id: str) -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    result = _invoke(client, "1", "--after-id", bad_id)
+    error = _usage_error(result)
+    assert "--after-id" in error
+    assert bad_id in error
+    client.connect.assert_not_called()
+
+
+@pytest.mark.parametrize("bad_id", ["-5", "abc", "2147483648"])
+def test_messages_through_id_rejects_an_invalid_id(bad_id: str) -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    result = _invoke(
+        client, "1", "--after-id", "1", "--through-id", bad_id
+    )
+    error = _usage_error(result)
+    assert "--through-id" in error
+    assert bad_id in error
+    client.connect.assert_not_called()
+
+
+@pytest.mark.parametrize("through_id", ["100", "99", "0"])
+def test_messages_through_id_at_or_below_after_id_is_empty(
+    through_id: str,
+) -> None:
+    client = _fake_client(entity=_entity(1), history=_history(101))
+    result = _invoke(
+        client, "1", "--after-id", "100", "--through-id", through_id
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == []
+    client.iter_messages.assert_not_called()
+    client.is_user_authorized.assert_awaited_once()
+    client.get_entity.assert_awaited_once_with(1)
+    client.disconnect.assert_awaited_once()
+
+
+def test_messages_empty_id_range_still_reports_unknown_group() -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    client.get_entity = AsyncMock(
+        side_effect=ValueError("Cannot find any entity")
+    )
+    result = _invoke(
+        client, "1", "--after-id", "100", "--through-id", "100"
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["type"] == "GroupNotFoundError"
+    client.iter_messages.assert_not_called()
+
+
+def test_messages_empty_id_range_still_requires_a_session() -> None:
+    client = _fake_client(entity=_entity(1), history=[], authorized=False)
+    result = _invoke(
+        client, "1", "--after-id", "100", "--through-id", "100"
+    )
+    assert result.exit_code == 1
+    assert json.loads(result.stderr)["type"] == "AuthError"
+    client.iter_messages.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "bounds",
+    [
+        ["--after-id", "2147483647"],
+        ["--after-id", "2147483647", "--through-id", "2147483647"],
+    ],
+)
+def test_messages_after_the_largest_id_is_empty(bounds: list[str]) -> None:
+    client = _fake_client(entity=_entity(1), history=_history(5))
+    result = _invoke(client, "1", *bounds)
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == []
+    client.iter_messages.assert_not_called()
+    client.get_entity.assert_awaited_once_with(1)
+
+
+def test_messages_through_id_accepts_the_largest_id() -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    result = _invoke(
+        client, "1", "--after-id", "100", "--through-id", "2147483647"
+    )
+    assert result.exit_code == 0, result.output
+    _, kwargs = client.iter_messages.call_args
+    assert kwargs["min_id"] == 100
+    assert kwargs["max_id"] == 2147483648
+
+
+class _FailingPastTheEnd(_AsyncIter):
+    """Asked for more after its last item, fails the way Telethon does
+    when the next request would start past the largest id."""
+
+    async def __anext__(self) -> Any:
+        if not self._items:
+            raise struct.error(
+                "'i' format requires -2147483648 <= number <= 2147483647"
+            )
+        return self._items.pop(0)
+
+
+@pytest.mark.parametrize("through", [[], ["--through-id", "2147483647"]])
+def test_messages_stops_reading_at_the_largest_id(through: list[str]) -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    client.iter_messages = MagicMock(
+        return_value=_FailingPastTheEnd(_history(2147483646, 2147483647))
+    )
+    result = _invoke(client, "1", "--after-id", "2147483645", *through)
+    assert _output_ids(result) == [2147483646, 2147483647]
+
+
+def test_messages_stops_reading_at_through_id() -> None:
+    client = _fake_client(entity=_entity(1), history=[])
+    client.iter_messages = MagicMock(
+        return_value=_FailingPastTheEnd(_history(150, 200))
+    )
+    result = _invoke(
+        client, "1", "--after-id", "100", "--through-id", "200"
+    )
+    assert _output_ids(result) == [150, 200]
 
 
 def test_to_message_helper_handles_missing_attributes() -> None:

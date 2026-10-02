@@ -2,14 +2,15 @@
 
 Every command must emit ``{"error": "...", "type": "..."}`` to stderr
 and exit non-zero for all recognised failure modes. These tests are
-parametrised over the four data commands (``groups``/``messages``/
-``search``/``thread``) since they share the same decorator and
-exception surface.
+parametrised over the six data commands (``groups``/``messages``/
+``search``/``thread``/``get``/``download``) since they share the same
+decorator and exception surface.
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -33,6 +34,7 @@ from tg_cli.config import ConfigError
 from tg_cli.errors import (
     NOT_LOGGED_IN_MESSAGE,
     AuthError,
+    DownloadError,
     MessageNotFoundError,
     _classify,
     emit_error,
@@ -131,12 +133,44 @@ def test_handle_errors_passes_through_unknown_exceptions() -> None:
     assert result.stderr == ""
 
 
+def test_classify_maps_download_error() -> None:
+    assert _classify(DownloadError("disk full")) == (
+        "disk full",
+        "DownloadError",
+    )
+
+
+def test_handle_errors_maps_download_error_to_json() -> None:
+    import click
+
+    @click.command()
+    @handle_errors
+    def cmd() -> None:
+        raise DownloadError("cannot write photo: disk full")
+
+    result = CliRunner().invoke(cmd, [])
+    assert result.exit_code == 1
+    payload = _parse_error(result.stderr)
+    assert payload == {
+        "error": "cannot write photo: disk full",
+        "type": "DownloadError",
+    }
+
+
 DATA_COMMANDS = [
     ("groups", ("groups",)),
     ("messages", ("messages", "1")),
     ("search", ("search", "1", "q")),
     ("thread", ("thread", "1", "5")),
+    ("get", ("get", "1", "5")),
+    ("download", ("download", "--dir", "photos", "1", "5")),
 ]
+
+
+@pytest.fixture(autouse=True)
+def _scratch_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # ``tg download`` creates its relative ``--dir`` before it connects.
+    monkeypatch.chdir(tmp_path)
 
 
 @pytest.mark.parametrize("module,argv", DATA_COMMANDS)
@@ -232,6 +266,8 @@ def test_time_parse_error_emits_json(
         ("messages", ("messages", "dev")),
         ("search", ("search", "dev", "q")),
         ("thread", ("thread", "dev", "5")),
+        ("get", ("get", "dev", "5")),
+        ("download", ("download", "--dir", "photos", "dev", "5")),
     ],
 )
 def test_ambiguous_group_emits_json(

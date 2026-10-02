@@ -38,6 +38,10 @@ class MessageNotFoundError(Exception):
     """Raised when a referenced message id cannot be fetched."""
 
 
+class DownloadError(Exception):
+    """Raised when a file cannot be downloaded or written to disk."""
+
+
 NOT_LOGGED_IN_MESSAGE = "Not logged in. Run `tg login` first."
 
 
@@ -56,6 +60,8 @@ def _classify(exc: BaseException) -> tuple[str, str] | None:
         return str(exc) or NOT_LOGGED_IN_MESSAGE, "AuthError"
     if isinstance(exc, MessageNotFoundError):
         return str(exc), "MessageNotFoundError"
+    if isinstance(exc, DownloadError):
+        return str(exc), "DownloadError"
     if isinstance(exc, ConfigError):
         return str(exc), "ConfigError"
     if isinstance(exc, TimeParseError):

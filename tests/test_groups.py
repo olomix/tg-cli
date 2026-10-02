@@ -415,3 +415,27 @@ def test_groups_disconnects_on_success() -> None:
     assert exit_code == 0
     client.connect.assert_awaited_once()
     client.disconnect.assert_awaited_once()
+
+
+def test_groups_reads_a_username_listed_only_in_usernames() -> None:
+    """A group with several usernames can leave ``username`` empty; its
+    message links take the handle from the same list."""
+    entity = _tl.Channel(
+        id=1234567890,
+        title="Dev",
+        photo=None,
+        date=None,
+        megagroup=True,
+        username=None,
+        usernames=[
+            _tl.Username(username="retired", active=False),
+            _tl.Username(username="dev_main", active=True),
+        ],
+    )
+    dialog = SimpleNamespace(
+        entity=entity, id=_CHANNEL_MARKED_OFFSET - entity.id, name="Dev"
+    )
+    code, out, err, _ = _run_groups([dialog])
+    assert code == 0, err
+    [group] = json.loads(out)
+    assert group["username"] == "dev_main"

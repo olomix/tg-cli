@@ -1,0 +1,230 @@
+"""``tg download`` — save photos from a Telegram group into a directory."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import copy
+import json
+import os
+import tempfile
+from typing import Any
+
+import click
+from telethon.tl import types as _tl
+
+from ..client import make_client
+from ..errors import AuthError, DownloadError, handle_errors
+from ..models import DownloadResult
+from ._message import MESSAGE_ID, messages_by_id
+from ._peer import marked_peer_id
+from ._resolve import resolve
+
+_DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+
+
+@click.command()
+@click.argument("group")
+@click.argument("message_ids", type=MESSAGE_ID, nargs=-1, required=True)
+@click.option(
+    "--dir",
+    "directory",
+    required=True,
+    help="Directory to save the photos into; created if missing.",
+)
+@click.option(
+    "--max-bytes",
+    "max_bytes",
+    type=click.IntRange(min=1),
+    default=_DEFAULT_MAX_BYTES,
+    show_default=True,
+    help="Save the largest size of each photo that is not above this.",
+)
+@handle_errors
+def download(
+    group: str,
+    message_ids: tuple[int, ...],
+    directory: str,
+    max_bytes: int,
+) -> None:
+    """Save the photos of messages MESSAGE_IDS from GROUP.
+
+    The photos go into the --dir directory. Prints one JSON result per
+    id, in the order given.
+    """
+    _ensure_writable_dir(directory)
+    results = asyncio.run(
+        _download_photos(
+            group, list(message_ids), os.path.abspath(directory), max_bytes
+        )
+    )
+    click.echo(json.dumps([r.to_dict() for r in results]))
+
+
+def _ensure_writable_dir(path: str) -> None:
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+    except OSError as exc:
+        raise click.UsageError(
+            f"--dir {path}: cannot create the directory ({exc.strerror})."
+        ) from exc
+    if not os.path.isdir(path) or not os.access(path, os.W_OK | os.X_OK):
+        raise click.UsageError(f"--dir {path}: not a writable directory.")
+
+
+async def _download_photos(
+    group: str, message_ids: list[int], directory: str, max_bytes: int
+) -> list[DownloadResult]:
+    client = make_client()
+    await client.connect()
+    try:
+        if not await client.is_user_authorized():
+            raise AuthError()
+        entity = await resolve(client, group)
+        group_id = marked_peer_id(entity)
+        found = messages_by_id(
+            await client.get_messages(entity, ids=message_ids)
+        )
+        results = []
+        for message_id in message_ids:
+            path = os.path.join(directory, f"{group_id}_{message_id}.jpg")
+            results.append(
+                await _save_photo(
+                    client, found.get(message_id), message_id, path, max_bytes
+                )
+            )
+        return results
+    finally:
+        await client.disconnect()
+
+
+async def _save_photo(
+    client: Any, raw: Any, message_id: int, path: str, max_bytes: int
+) -> DownloadResult:
+    if raw is None:
+        return _skipped(message_id, "not_found")
+    variants = _real_variants(raw)
+    if not variants:
+        return _skipped(message_id, "not_photo")
+    fitting = [(size, v) for size, v in variants if size <= max_bytes]
+    if not fitting:
+        return _skipped(message_id, "too_large")
+    _, chosen = max(fitting, key=lambda pair: pair[0])
+    saved_bytes = await _download_variant(client, raw, chosen, path, max_bytes)
+    if saved_bytes is None:
+        return _skipped(message_id, "too_large")
+    return DownloadResult(
+        id=message_id,
+        status="saved",
+        path=path,
+        bytes=saved_bytes,
+        reason=None,
+    )
+
+
+async def _download_variant(
+    client: Any, raw: Any, variant: Any, path: str, max_bytes: int
+) -> int | None:
+    """Download one size of the message's photo to ``path``.
+
+    Returns its byte count, or ``None`` when the file turns out larger
+    than ``max_bytes``. ``path`` is only touched by a complete download.
+    """
+    temp_path: str | None = None
+    try:
+        # Hidden, so a partial file is not taken for a photo. Created
+        # first: Telethon writes to an existing file under its own name.
+        fd, temp_path = tempfile.mkstemp(
+            dir=os.path.dirname(path), prefix=".", suffix=".jpg"
+        )
+        os.close(fd)
+        # Named by type string: Telethon ignores a ``PhotoSizeProgressive``
+        # passed as an object and then downloads nothing. Given only that
+        # size: Telethon raises on a progressive one that lists no sizes.
+        await client.download_media(
+            _with_photo_sizes(raw, [variant]),
+            file=temp_path,
+            thumb=variant.type,
+        )
+        size = os.path.getsize(temp_path)
+        if size == 0:
+            raise DownloadError(
+                f"Telegram sent no data for the photo of message {raw.id}."
+            )
+        if size > max_bytes:
+            # Deleted here, where a failure counts: the cleanup below
+            # would let a file that stays be reported as skipped.
+            os.unlink(temp_path)
+            return None
+        # Swaps a symlink at ``path`` instead of writing through it.
+        os.replace(temp_path, path)
+        return size
+    except OSError as exc:
+        # Covers a dropped connection too: ``ConnectionError`` and
+        # ``TimeoutError`` are ``OSError`` subclasses.
+        raise DownloadError(
+            f"Cannot save the photo of message {raw.id}: "
+            f"{str(exc) or type(exc).__name__}"
+        ) from exc
+    finally:
+        if temp_path is not None:
+            # Best effort, so a failure here never replaces the error
+            # that ended the download.
+            with contextlib.suppress(OSError):
+                os.unlink(temp_path)
+
+
+def _with_photo_sizes(raw: Any, sizes: list[Any]) -> Any:
+    """Return a copy of the message whose photo holds only ``sizes``."""
+    message = copy.copy(raw)
+    message.media = copy.copy(raw.media)
+    message.media.photo = copy.copy(raw.media.photo)
+    message.media.photo.sizes = sizes
+    # Telethon searches the video sizes too and raises on a markup one,
+    # which has no type.
+    message.media.photo.video_sizes = None
+    return message
+
+
+def _skipped(message_id: int, reason: str) -> DownloadResult:
+    return DownloadResult(
+        id=message_id,
+        status="skipped",
+        path=None,
+        bytes=None,
+        reason=reason,
+    )
+
+
+def _real_variants(raw: Any) -> list[tuple[int, Any]]:
+    """Return ``(declared bytes, variant)`` for each real photo size.
+
+    A real size is one that holds an image to download. Empty when the
+    message is not a photo post.
+    """
+    media = getattr(raw, "media", None)
+    # A link preview's image is a ``MessageMediaWebPage`` and an image
+    # sent as a file a ``MessageMediaDocument``; neither is a photo post.
+    if not isinstance(media, _tl.MessageMediaPhoto):
+        return []
+    # An expired self-destructing photo has no ``Photo`` payload.
+    if not isinstance(media.photo, _tl.Photo):
+        return []
+    variants = []
+    for variant in media.photo.sizes:
+        size = _declared_bytes(variant)
+        if size is not None:
+            variants.append((size, variant))
+    return variants
+
+
+def _declared_bytes(variant: Any) -> int | None:
+    # Everything else (stripped preview, outline path, empty size, types
+    # not known today) is a placeholder, not a downloadable image.
+    if isinstance(variant, _tl.PhotoSize):
+        return variant.size
+    if isinstance(variant, _tl.PhotoSizeProgressive):
+        return max(variant.sizes, default=None)
+    if isinstance(variant, _tl.PhotoCachedSize):
+        return len(variant.bytes)
+    return None

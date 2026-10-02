@@ -1,5 +1,24 @@
 # Forum Topics Support
 
+> **Partly delivered (2026-10-01).** The `topic_id` field on the
+> Message JSON — Task 1 without the `Topic` dataclass, and all of
+> Task 2 — was delivered by the plan
+> `20261001-incremental-fetch-and-media.md` (release 0.2.0). Those
+> items are marked `[x]` below. Four details differ from the text here:
+> the key is emitted after `sender_username`, not next to
+> `reply_to_id`; the extraction is a private helper `_topic_id` in
+> `commands/_message.py`, tested in `tests/test_message_fields.py`;
+> the service message that creates a topic is documented with
+> `topic_id` null (it carries no forum reply header), not with its own
+> id as "Edge cases" and the cross-reference table below expect; and
+> the `README.md` security note cited under "Scope boundaries" now
+> reads "read-only towards Telegram", since `tg download` writes
+> photos to a local directory.
+> The `topic_id` parts of Task 8 are delivered too: `README.md` and
+> `skill/SKILL.md` describe the field, including null outside forum
+> topics. The `Topic` dataclass, `tg topics`, `tg messages --topic`
+> and their documentation are still open.
+
 ## Overview
 
 Some supergroups have **Topics (forum)** mode enabled — Telegram's feature that splits the group into multiple first-class conversation threads (each topic looks like its own chat inside the group). Today `tg` has no idea topics exist: `tg groups` lists the supergroup as a single entry, `tg messages` returns every message from every topic mixed together, and there's no way to see the list of topics or filter to one.
@@ -233,14 +252,14 @@ Reading `last.date` directly avoids the "walk `resp.messages` looking for the me
 - Modify: `src/tg_cli/models.py`
 - Modify (or create): `tests/test_models.py` (check if exists; otherwise add coverage to `tests/test_messages.py`'s helpers)
 
-- [ ] write failing tests for `Message.topic_id`:
+- [x] write failing tests for `Message.topic_id` (delivered by `20261001-incremental-fetch-and-media.md`; the key follows `sender_username`):
       - default position in `to_dict()` emits `"topic_id"` key alongside `"reply_to_id"`
       - `topic_id=None` serializes as JSON `null`
       - `topic_id=42` serializes as the integer
 - [ ] write failing tests for `Topic` dataclass:
       - `to_dict()` emits all 8 fields
       - `icon_emoji_id=None` serializes as JSON `null`
-- [ ] add `topic_id: int | None` field to `Message` dataclass; update `to_dict()` to include `"topic_id"`
+- [x] add `topic_id: int | None` field to `Message` dataclass; update `to_dict()` to include `"topic_id"` (delivered by `20261001-incremental-fetch-and-media.md`)
 - [ ] add `Topic` dataclass with 8 fields and `to_dict()`
 - [ ] run `uv run pytest tests/test_models.py -v` (or wherever the Model tests live) — must pass before task 2
 - [ ] run `uv run pytest -v` to confirm no other tests broke (the existing `Message(...)` constructions will fail until task 2)
@@ -253,15 +272,15 @@ Note: existing `to_message()` callers instantiate `Message(...)` positionally or
 - Modify: `src/tg_cli/commands/_message.py`
 - Modify: `tests/test_messages.py` (or wherever `to_message` is unit-tested — `tests/test_message.py` if it exists)
 
-- [ ] write failing tests for a new `topic_id_of(raw)` helper (or inline the logic in `to_message` — implementer choice, tests target the observable `Message.topic_id` field):
+- [x] write failing tests for a new `topic_id_of(raw)` helper (or inline the logic in `to_message` — implementer choice, tests target the observable `Message.topic_id` field) (delivered by `20261001-incremental-fetch-and-media.md`, in `tests/test_message_fields.py`):
       - raw message with no `reply_to` → `topic_id=None`
       - `reply_to` with `forum_topic=False` → `topic_id=None`
       - `reply_to` with `forum_topic=True, reply_to_top_id=42` → `topic_id=42`
       - `reply_to` with `forum_topic=True, reply_to_top_id=None, reply_to_msg_id=42` → `topic_id=42` (topic-root service msg case)
       - `reply_to` with `forum_topic=True` and BOTH `reply_to_top_id=50` and `reply_to_msg_id=42` → `topic_id=50` (prefer top id)
-- [ ] implement the extraction in `_message.py` so `to_message(raw, group_id)` returns a `Message` with `topic_id` populated
-- [ ] verify existing `to_message` tests still pass (they should — `topic_id` defaults to `None` for all their fixtures)
-- [ ] run `uv run pytest -v` — must be fully green before task 3
+- [x] implement the extraction in `_message.py` so `to_message(raw, group_id)` returns a `Message` with `topic_id` populated (delivered by `20261001-incremental-fetch-and-media.md`, as `_topic_id`)
+- [x] verify existing `to_message` tests still pass (they should — `topic_id` defaults to `None` for all their fixtures) (delivered by `20261001-incremental-fetch-and-media.md`)
+- [x] run `uv run pytest -v` — must be fully green before task 3 (delivered by `20261001-incremental-fetch-and-media.md`)
 
 ### Task 3: `NotAForumError`
 
@@ -350,9 +369,9 @@ Note: existing `to_message()` callers instantiate `Message(...)` positionally or
 - Modify: `README.md`
 - Modify: `skill/SKILL.md`
 
-- [ ] `README.md`: add `tg topics` to the Commands section between `tg groups` and `tg messages`; document `--topic` flag on `tg messages`; add one-paragraph explanation of Telegram Topics (supergroups with Forum mode enabled); note that `topic_id` is `null` for non-forum messages
-- [ ] `README.md`: add a "Message JSON shape" note about the new `topic_id` field
-- [ ] `skill/SKILL.md`: mirror the above — short "Topics" section explaining when Claude should call `tg topics`, how to filter with `--topic`, and how to interpret `topic_id` on messages; add `tg topics` to the command index
+- [ ] `README.md`: add `tg topics` to the Commands section between `tg groups` and `tg messages`; document `--topic` flag on `tg messages`; add one-paragraph explanation of Telegram Topics (supergroups with Forum mode enabled); note that `topic_id` is `null` for non-forum messages (the `topic_id` note was delivered with 0.2.0; the rest is open)
+- [x] `README.md`: add a "Message JSON shape" note about the new `topic_id` field (delivered with 0.2.0)
+- [ ] `skill/SKILL.md`: mirror the above — short "Topics" section explaining when Claude should call `tg topics`, how to filter with `--topic`, and how to interpret `topic_id` on messages; add `tg topics` to the command index (how to interpret `topic_id` was delivered with 0.2.0; the rest is open)
 - [ ] `skill/SKILL.md`: add one-liner "For forum supergroups, always check `tg topics` before `tg messages` if the user refers to a channel-within-the-group by name"
 - [ ] move this plan to `docs/plans/completed/20260419-forum-topics-support.md`
 

@@ -1,8 +1,22 @@
 """Smoke tests for the top-level CLI skeleton."""
 
+import sys
+from pathlib import Path
+
 from click.testing import CliRunner
 
+import tg_cli
 from tg_cli import cli
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
+
+def _project_version() -> str:
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    return tomllib.loads(pyproject.read_text())["project"]["version"]
 
 
 def test_entry_point_exists() -> None:
@@ -19,9 +33,14 @@ def test_help_runs_cleanly() -> None:
     assert "Telegram" in result.output
 
 
-def test_version_runs_cleanly() -> None:
-    """`tg --version` exits 0 even without installed package metadata."""
+def test_version_prints_the_project_version() -> None:
+    """`tg --version` exits 0 even without installed package metadata,
+    and prints the version `pyproject.toml` declares."""
     runner = CliRunner()
     result = runner.invoke(cli.main, ["--version"])
     assert result.exit_code == 0
-    assert "0.1.0" in result.output
+    assert result.output.endswith(f", version {_project_version()}\n")
+
+
+def test_package_carries_the_project_version() -> None:
+    assert tg_cli.__version__ == _project_version()

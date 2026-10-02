@@ -11,14 +11,14 @@ from telethon import errors as telethon_errors
 from ..client import make_client
 from ..errors import AuthError, MessageNotFoundError, handle_errors
 from ..models import Message
-from ._message import to_message
-from ._peer import marked_peer_id
+from ._message import MESSAGE_ID, to_message
+from ._peer import marked_peer_id, message_link_base
 from ._resolve import resolve
 
 
 @click.command()
 @click.argument("group")
-@click.argument("message_id", type=int)
+@click.argument("message_id", type=MESSAGE_ID)
 @click.option(
     "--limit",
     type=click.IntRange(min=1),
@@ -51,6 +51,7 @@ async def _collect_thread(
             raise AuthError()
         entity = await resolve(client, group)
         group_id = marked_peer_id(entity)
+        link_base = message_link_base(entity)
 
         # Telethon signals bad/nonexistent message ids via
         # ``MsgIdInvalidError`` and unreachable peers via
@@ -70,7 +71,9 @@ async def _collect_thread(
                 f"message {message_id} not found in {group!r}"
             )
 
-        collected: list[Message] = [to_message(root_raw, group_id)]
+        collected: list[Message] = [
+            to_message(root_raw, group_id, link_base=link_base)
+        ]
         # ``reverse=True`` yields replies oldest→newest, matching the
         # chronological ordering readers expect in a thread view.
         # Telethon raises ``MsgIdInvalidError`` / ``PeerIdInvalidError``
@@ -84,7 +87,9 @@ async def _collect_thread(
                 reply_to=message_id,
                 reverse=True,
             ):
-                collected.append(to_message(raw, group_id))
+                collected.append(
+                    to_message(raw, group_id, link_base=link_base)
+                )
         except (
             telethon_errors.MsgIdInvalidError,
             telethon_errors.PeerIdInvalidError,
