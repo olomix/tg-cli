@@ -33,5 +33,3 @@ env/
 *.session-wal
 *.session-shm
 
-# uv
-uv.lock
