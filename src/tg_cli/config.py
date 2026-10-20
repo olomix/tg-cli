@@ -8,8 +8,9 @@ overridden with the ``TG_CLI_CONFIG_DIR`` environment variable.
 from __future__ import annotations
 
 import os
+import socket
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 if sys.version_info >= (3, 11):
@@ -40,6 +41,13 @@ class ConfigError(Exception):
     """Raised when configuration is missing or invalid."""
 
 
+def default_device_model() -> str:
+    """Return ``tg-cli @ <host>`` to tell machines apart in Telegram."""
+    # macOS appends ".local" or a network-assigned domain; keep the name.
+    host = socket.gethostname().split(".")[0]
+    return f"tg-cli @ {host}" if host else "tg-cli"
+
+
 @dataclass(frozen=True)
 class Config:
     """Validated configuration used by all tg-cli commands."""
@@ -47,6 +55,7 @@ class Config:
     api_id: int
     api_hash: str
     config_dir: Path
+    device_model: str = field(default_factory=default_device_model)
 
     @property
     def session_path(self) -> Path:
@@ -145,4 +154,18 @@ def load_config(config_dir: Path | None = None) -> Config:
         raise ConfigError(
             f"api_hash in {path} must be a non-empty string."
         )
-    return Config(api_id=api_id, api_hash=api_hash, config_dir=directory)
+    device_model = (
+        data["device_model"]
+        if "device_model" in data
+        else default_device_model()
+    )
+    if not isinstance(device_model, str) or not device_model.strip():
+        raise ConfigError(
+            f"device_model in {path} must be a non-empty string."
+        )
+    return Config(
+        api_id=api_id,
+        api_hash=api_hash,
+        config_dir=directory,
+        device_model=device_model,
+    )

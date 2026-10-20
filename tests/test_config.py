@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from tg_cli import config as cfg_mod
-from tg_cli.config import Config, ConfigError, load_config
+from tg_cli.config import (
+    Config,
+    ConfigError,
+    default_device_model,
+    load_config,
+)
 
 
 def _write(path: Path, content: str) -> None:
@@ -26,6 +31,43 @@ def test_load_config_success(tmp_path: Path) -> None:
     assert c.api_hash == "abcdef0123"
     assert c.config_dir == tmp_path
     assert c.session_path == tmp_path / "session"
+    assert c.device_model == default_device_model()
+
+
+def test_default_device_model_drops_domain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cfg_mod.socket, "gethostname", lambda: "descartes.local"
+    )
+    assert default_device_model() == "tg-cli @ descartes"
+
+
+def test_default_device_model_without_hostname(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cfg_mod.socket, "gethostname", lambda: "")
+    assert default_device_model() == "tg-cli"
+
+
+def test_load_config_reads_device_model(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "config.toml",
+        'api_id = 1\napi_hash = "h"\ndevice_model = "MacBook Pro"\n',
+    )
+    assert load_config(tmp_path).device_model == "MacBook Pro"
+
+
+@pytest.mark.parametrize("value", ['""', "  \"  \"", "5"])
+def test_load_config_rejects_bad_device_model(
+    tmp_path: Path, value: str
+) -> None:
+    _write(
+        tmp_path / "config.toml",
+        f'api_id = 1\napi_hash = "h"\ndevice_model = {value}\n',
+    )
+    with pytest.raises(ConfigError, match="device_model"):
+        load_config(tmp_path)
 
 
 def test_load_config_missing_file_has_setup_hint(tmp_path: Path) -> None:

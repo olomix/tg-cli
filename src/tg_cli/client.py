@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from telethon import TelegramClient
 
+from . import __version__
 from .config import Config, ConfigError, load_config
 
 
@@ -34,4 +35,12 @@ def make_client(config: Config | None = None) -> TelegramClient:
         cfg.config_dir.chmod(0o700)
     except (OSError, NotImplementedError):
         pass
-    return TelegramClient(str(cfg.session_path), cfg.api_id, cfg.api_hash)
+    # Telegram shows these in the account's active sessions list; Telethon
+    # would report the CPU architecture and its own version instead.
+    return TelegramClient(
+        str(cfg.session_path),
+        cfg.api_id,
+        cfg.api_hash,
+        device_model=cfg.device_model,
+        app_version=__version__,
+    )

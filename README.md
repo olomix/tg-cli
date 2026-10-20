@@ -60,7 +60,12 @@ options with a `UsageError` such as `No such command 'get'`.
    ```toml
    api_id = 1234567
    api_hash = "abcdef0123456789abcdef0123456789"
+   # Optional: device name in Telegram's sessions list.
+   # Defaults to "tg-cli @ <hostname>".
+   device_model = "tg-cli @ laptop"
    ```
+   The sessions list shows the app title from my.telegram.org, then
+   `device_model` and the tg-cli version; they are recorded at login.
    Override the directory with `TG_CLI_CONFIG_DIR=/some/path` if needed.
 3. Authenticate:
    ```bash

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tg_cli import __version__
 from tg_cli.client import make_client
 from tg_cli.config import Config, ConfigError
 
@@ -19,7 +20,13 @@ def test_make_client_creates_dir_and_passes_session_path(
     with patch("tg_cli.client.TelegramClient") as mock_tc:
         client = make_client(cfg)
     assert config_dir.is_dir()
-    mock_tc.assert_called_once_with(str(config_dir / "session"), 42, "hash")
+    mock_tc.assert_called_once_with(
+        str(config_dir / "session"),
+        42,
+        "hash",
+        device_model=cfg.device_model,
+        app_version=__version__,
+    )
     assert client is mock_tc.return_value
 
 
@@ -31,7 +38,13 @@ def test_make_client_loads_config_when_none(tmp_path: Path) -> None:
     ):
         make_client()
     mock_load.assert_called_once_with()
-    mock_tc.assert_called_once_with(str(tmp_path / "session"), 7, "h")
+    mock_tc.assert_called_once_with(
+        str(tmp_path / "session"),
+        7,
+        "h",
+        device_model=cfg.device_model,
+        app_version=__version__,
+    )
 
 
 def test_make_client_raises_config_error_on_mkdir_failure(
