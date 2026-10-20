@@ -10,6 +10,7 @@ dependencies = [
     "telethon>=1.36",
     "click>=8.1",
     "tomli>=2.0; python_version < '3.11'",
+    "qrcode>=8.2",
 ]
 
 [project.scripts]

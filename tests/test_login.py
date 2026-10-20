@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,6 +11,13 @@ from telethon.errors import (
     PasswordHashInvalidError,
     PhoneCodeInvalidError,
     SessionPasswordNeededError,
+)
+from telethon.tl.types.auth import (
+    CodeTypeSms,
+    SentCode,
+    SentCodeTypeApp,
+    SentCodeTypeSetUpEmailRequired,
+    SentCodeTypeSms,
 )
 
 from tg_cli import cli
@@ -196,3 +204,91 @@ def test_login_invalid_2fa_password_emits_json_error() -> None:
     assert '"type": "AuthError"' in result.stderr
     assert "2fa" in result.stderr.lower()
     client.disconnect.assert_awaited_once()
+
+
+def test_login_reports_code_sent_to_telegram_app() -> None:
+    client = _fake_client()
+    client.send_code_request.return_value = SentCode(
+        type=SentCodeTypeApp(length=5), phone_code_hash="h"
+    )
+    with patch("tg_cli.commands.login.make_client", return_value=client):
+        result = CliRunner().invoke(
+            cli.main, ["login", "--phone", "+15551234567"], input="98765\n"
+        )
+    assert result.exit_code == 0, result.output
+    assert "Telegram app" in result.output
+
+
+def test_login_aborts_when_login_email_setup_required() -> None:
+    client = _fake_client()
+    client.send_code_request.return_value = SentCode(
+        type=SentCodeTypeSetUpEmailRequired(), phone_code_hash="h"
+    )
+    with patch("tg_cli.commands.login.make_client", return_value=client):
+        result = CliRunner().invoke(
+            cli.main, ["login", "--phone", "+15551234567"]
+        )
+    assert result.exit_code != 0
+    assert "login email" in result.output
+    client.sign_in.assert_not_called()
+    client.disconnect.assert_awaited_once()
+
+
+def test_login_resends_code_on_empty_input() -> None:
+    client = _fake_client()
+    client.send_code_request.side_effect = [
+        SentCode(
+            type=SentCodeTypeApp(length=5),
+            phone_code_hash="h",
+            next_type=CodeTypeSms(),
+        ),
+        SentCode(type=SentCodeTypeSms(length=5), phone_code_hash="h"),
+    ]
+    with patch("tg_cli.commands.login.make_client", return_value=client):
+        result = CliRunner().invoke(
+            cli.main,
+            ["login", "--phone", "+15551234567"],
+            input="\n98765\n",
+        )
+    assert result.exit_code == 0, result.output
+    assert "resend via SMS" in result.output
+    assert "Code sent via SMS" in result.output
+    client.send_code_request.assert_awaited_with(
+        "+15551234567", force_sms=True
+    )
+    client.sign_in.assert_awaited_once_with(
+        phone="+15551234567", code="98765"
+    )
+
+
+def _fake_qr_login(wait_side_effect: list) -> MagicMock:
+    qr_login = MagicMock()
+    qr_login.url = "tg://login?token=abc"
+    qr_login.wait = AsyncMock(side_effect=wait_side_effect)
+    qr_login.recreate = AsyncMock()
+    return qr_login
+
+
+def test_login_qr_redraws_expired_code_until_scanned() -> None:
+    client = _fake_client()
+    qr_login = _fake_qr_login([asyncio.TimeoutError(), None])
+    client.qr_login = AsyncMock(return_value=qr_login)
+    with patch("tg_cli.commands.login.make_client", return_value=client):
+        result = CliRunner().invoke(cli.main, ["login", "--qr"])
+    assert result.exit_code == 0, result.output
+    assert result.output.count("Link Desktop Device") == 2
+    qr_login.recreate.assert_awaited_once()
+    client.send_code_request.assert_not_called()
+    assert "Login successful" in result.output
+
+
+def test_login_qr_asks_for_2fa_password() -> None:
+    client = _fake_client()
+    qr_login = _fake_qr_login([SessionPasswordNeededError(request=None)])
+    client.qr_login = AsyncMock(return_value=qr_login)
+    with patch("tg_cli.commands.login.make_client", return_value=client):
+        result = CliRunner().invoke(
+            cli.main, ["login", "--qr"], input="mypassword\n"
+        )
+    assert result.exit_code == 0, result.output
+    client.sign_in.assert_awaited_once_with(password="mypassword")

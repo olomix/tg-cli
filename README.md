@@ -66,9 +66,13 @@ options with a `UsageError` such as `No such command 'get'`.
    ```bash
    tg login              # interactive: phone prompt + login code
    tg login --phone +15551234567   # skip the phone prompt
+   tg login --qr         # scan a QR code instead of typing a code
    ```
    Prompts for phone number (unless `--phone` is given), login code,
-   and (if enabled) 2FA password. The session persists at
+   and (if enabled) 2FA password. Telegram sometimes stops sending codes
+   to third-party apps after repeated attempts; `--qr` avoids the code
+   by scanning from the phone app (Settings > Devices > Link Desktop
+   Device). The session persists at
    `~/.config/tg-cli/session.session` so subsequent commands run
    non-interactively.
 
